@@ -19,15 +19,18 @@ Final project for TESDA / CIICC.
 - IntelliJ IDEA
 
 ## Project Structure
+
+```
 src/
-├── model/ Account, Transaction
-├── dao/ AccountDAO, TransactionDAO
-├── service/ BankingService (business logic and validation)
-├── exception/ Custom exceptions
-├── util/ DatabaseConnection
-└── Main.java Console menu
-lib/ MySQL JDBC driver
-database/ SQL script
+├── model/        Account, Transaction
+├── dao/          AccountDAO, TransactionDAO
+├── service/      BankingService (business logic and validation)
+├── exception/    Custom exceptions
+├── util/         DatabaseConnection
+└── Main.java     Console menu
+lib/              MySQL JDBC driver
+database/         SQL script
+```
 
 ## Setup
 1. Start MySQL in XAMPP.
