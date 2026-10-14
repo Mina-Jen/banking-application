@@ -41,7 +41,7 @@ database/         SQL script
 5. Run `Main.java`.
 
 ## Author
-- Name: Jen Othlie Mina
+- Name: Jen Otehlie Mina
 - Qualification: Java Programming NCIII
 - Batch: 13
 - Training Center: Center for International Industries Competence Corp. (CIICC)
