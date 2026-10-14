@@ -33,7 +33,6 @@ src/main/java/
 └── Main.java     Console menu
 src/test/java/    Business-rule tests
 database/         SQL script
-lib/              Local copy of the JDBC driver (not used by the Maven build)
 ```
 
 ## Setup
