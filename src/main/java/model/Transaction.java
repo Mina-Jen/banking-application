@@ -7,7 +7,7 @@ public class Transaction {
     private int id;
     private String transactionReference;
     private String accountNumber;
-    private String transactionType;     // DEPOSIT, WITHDRAW, TRANSFER
+    private TransactionType transactionType;
     private BigDecimal amount;
     private BigDecimal balance;         // balance AFTER the transaction
     private String referenceAccount;    // other account in a transfer, else null
@@ -24,8 +24,8 @@ public class Transaction {
     public String getAccountNumber() { return accountNumber; }
     public void setAccountNumber(String accountNumber) { this.accountNumber = accountNumber; }
 
-    public String getTransactionType() { return transactionType; }
-    public void setTransactionType(String transactionType) { this.transactionType = transactionType; }
+    public TransactionType getTransactionType() { return transactionType; }
+    public void setTransactionType(TransactionType transactionType) { this.transactionType = transactionType; }
 
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }

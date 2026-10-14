@@ -1,6 +1,7 @@
 package dao;
 
 import model.Transaction;
+import model.TransactionType;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -12,8 +13,10 @@ import java.util.List;
 public class TransactionDAO {
 
     // Creates the next reference: TXN-001, TXN-002, ...
+    // FOR UPDATE holds the table lock until commit so two sessions running
+    // inside their own transactions cannot both claim the same reference.
     public String generateReference(Connection conn) throws SQLException {
-        String sql = "SELECT COALESCE(MAX(id), 0) + 1 FROM transactions";
+        String sql = "SELECT COALESCE(MAX(id), 0) + 1 FROM transactions FOR UPDATE";
         try (PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             rs.next();
@@ -30,7 +33,7 @@ public class TransactionDAO {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, t.getTransactionReference());
             ps.setString(2, t.getAccountNumber());
-            ps.setString(3, t.getTransactionType());
+            ps.setString(3, t.getTransactionType().name());
             ps.setBigDecimal(4, t.getAmount());
             ps.setBigDecimal(5, t.getBalance());
             ps.setString(6, t.getReferenceAccount());   // null is fine for deposit/withdraw
@@ -50,7 +53,7 @@ public class TransactionDAO {
                     t.setId(rs.getInt("id"));
                     t.setTransactionReference(rs.getString("transaction_reference"));
                     t.setAccountNumber(rs.getString("account_number"));
-                    t.setTransactionType(rs.getString("transaction_type"));
+                    t.setTransactionType(TransactionType.valueOf(rs.getString("transaction_type")));
                     t.setAmount(rs.getBigDecimal("amount"));
                     t.setBalance(rs.getBigDecimal("balance"));
                     t.setReferenceAccount(rs.getString("reference_account"));

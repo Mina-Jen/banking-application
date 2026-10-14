@@ -9,36 +9,68 @@ Final project for TESDA / CIICC.
 3. List Accounts
 4. Deposit
 5. Withdraw
-6. Transfer (single database transaction with commit/rollback)
+6. Transfer (single database transaction with commit/rollback, recorded on both accounts)
 7. Transaction History
 
 ## Technologies
 - Java (JDK 17+)
+- Apache Maven
 - MySQL / MariaDB via XAMPP
 - MySQL Connector/J (JDBC driver)
+- JUnit 5 (business-rule tests)
 - IntelliJ IDEA
 
 ## Project Structure
 
 ```
-src/
+pom.xml           Maven build; the JDBC driver is resolved from Maven Central
+src/main/java/
 ├── model/        Account, Transaction
 ├── dao/          AccountDAO, TransactionDAO
 ├── service/      BankingService (business logic and validation)
 ├── exception/    Custom exceptions
 ├── util/         DatabaseConnection
 └── Main.java     Console menu
-lib/              MySQL JDBC driver
+src/test/java/    Business-rule tests
 database/         SQL script
+lib/              Local copy of the JDBC driver (not used by the Maven build)
 ```
 
 ## Setup
 1. Start MySQL in XAMPP.
 2. Run the script in `database/banking_db.sql` using phpMyAdmin (SQL tab).
-3. Open the project in IntelliJ and add `lib/mysql-connector-j-*.jar` as a library
-   (right-click the jar → Add as Library).
-4. If your MySQL root user has a password, update it in `util/DatabaseConnection.java`.
-5. Run `Main.java`.
+3. Database settings default to the XAMPP values (`root`, empty password,
+   `jdbc:mysql://localhost:3306/banking_db`). To use different ones, set the
+   `BANKING_DB_URL`, `BANKING_DB_USER` and `BANKING_DB_PASSWORD` environment
+   variables instead of editing `src/main/java/util/DatabaseConnection.java` —
+   that keeps real credentials out of the repository.
+4. Run the application:
+   - From a terminal: `mvn compile exec:java`
+   - From IntelliJ: open the project's `pom.xml`; IntelliJ imports it as a Maven project,
+     then run `Main`.
+
+The first build downloads MySQL Connector/J from Maven Central, so an internet connection
+is needed once. After that everything is cached in `~/.m2`.
+
+## Tests
+`mvn test` runs the business-rule checks in `src/test/java`. They cover the validation
+rules (amount precision and size, blank or over-long account number and name, transfer
+between identical accounts) and never open a database connection, so they pass on a
+machine without MySQL. The paths that write balances are proven by the demonstration below.
+
+## Demonstration Script
+Covers every required feature and a validation failure:
+1. Create `100001` Juan Dela Cruz with an initial deposit of `5000`.
+2. Create `100002` Pedro Santos with `8500`.
+3. Balance Inquiry for `100001`.
+4. List Accounts (shows both accounts and the total).
+5. Deposit `2000` into `100001` → balance `7,000.00`.
+6. Withdraw `1500` from `100001` → balance `5,500.00`.
+7. Transfer `2000` from `100001` to `100002` → `3,500.00` and `10,500.00`.
+8. Transaction History of `100001`.
+9. Error scenario: create `100001` again (duplicate account number), withdraw more than
+   the balance (insufficient funds), and deposit `0.001` (rejected — centavo precision).
+10. Transaction History of `100002` as well: the transfer appears on both accounts.
 
 ## Author
 - Name: Jen Otehlie Mina
