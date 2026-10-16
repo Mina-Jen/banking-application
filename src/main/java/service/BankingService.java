@@ -110,11 +110,11 @@ public class BankingService {
             conn.setAutoCommit(false);
             try {
                 Account account = findAccountForUpdate(conn, accountNumber);
-                BigDecimal newBalance = account.getBalance().add(amount);
-                requireStorableBalance(newBalance);
-                accountDao.updateBalance(conn, accountNumber, newBalance);
+                account.deposit(amount);
+                requireStorableBalance(account.getBalance());
+                accountDao.updateBalance(conn, accountNumber, account.getBalance());
                 Transaction saved = insertTransaction(
-                        conn, accountNumber, TransactionType.DEPOSIT, amount, newBalance, null);
+                        conn, accountNumber, TransactionType.DEPOSIT, amount, account.getBalance(), null);
                 conn.commit();
                 return saved;
             } catch (Exception e) {
@@ -135,14 +135,10 @@ public class BankingService {
             conn.setAutoCommit(false);
             try {
                 Account account = findAccountForUpdate(conn, accountNumber);
-                if (amount.compareTo(account.getBalance()) > 0) {
-                    throw new InsufficientFundsException("Withdrawal of " + amount.toPlainString()
-                            + " exceeds the available balance of " + account.getBalance().toPlainString() + ".");
-                }
-                BigDecimal newBalance = account.getBalance().subtract(amount);
-                accountDao.updateBalance(conn, accountNumber, newBalance);
+                account.withdraw(amount);
+                accountDao.updateBalance(conn, accountNumber, account.getBalance());
                 Transaction saved = insertTransaction(
-                        conn, accountNumber, TransactionType.WITHDRAW, amount, newBalance, null);
+                        conn, accountNumber, TransactionType.WITHDRAW, amount, account.getBalance(), null);
                 conn.commit();
                 return saved;
             } catch (Exception e) {
@@ -181,20 +177,16 @@ public class BankingService {
                 Account source = sourceLockedFirst ? firstLocked : secondLocked;
                 Account destination = sourceLockedFirst ? secondLocked : firstLocked;
 
-                if (amount.compareTo(source.getBalance()) > 0) {
-                    throw new InsufficientFundsException("Transfer of " + amount.toPlainString()
-                            + " exceeds the available balance of " + source.getBalance().toPlainString() + ".");
-                }
-                BigDecimal sourceBalance = source.getBalance().subtract(amount);
-                BigDecimal destinationBalance = destination.getBalance().add(amount);
-                requireStorableBalance(destinationBalance);
+                source.withdraw(amount);
+                destination.deposit(amount);
+                requireStorableBalance(destination.getBalance());
 
-                accountDao.updateBalance(conn, sourceAccount, sourceBalance);
-                accountDao.updateBalance(conn, destinationAccount, destinationBalance);
+                accountDao.updateBalance(conn, sourceAccount, source.getBalance());
+                accountDao.updateBalance(conn, destinationAccount, destination.getBalance());
                 Transaction sourceEntry = insertTransaction(
-                        conn, sourceAccount, TransactionType.TRANSFER, amount, sourceBalance, destinationAccount);
+                        conn, sourceAccount, TransactionType.TRANSFER, amount, source.getBalance(), destinationAccount);
                 insertTransaction(
-                        conn, destinationAccount, TransactionType.TRANSFER, amount, destinationBalance, sourceAccount);
+                        conn, destinationAccount, TransactionType.TRANSFER, amount, destination.getBalance(), sourceAccount);
                 conn.commit();
                 return sourceEntry;
             } catch (Exception e) {

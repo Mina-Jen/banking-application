@@ -73,15 +73,13 @@ public class AccountDAO {
             }
         }
     }
-
     // Converts one database row into an Account object
     private Account mapRow(ResultSet rs) throws SQLException {
-        Account a = new Account();
-        a.setId(rs.getInt("id"));
-        a.setAccountNumber(rs.getString("account_number"));
-        a.setAccountName(rs.getString("account_name"));
-        a.setBalance(rs.getBigDecimal("balance"));
-        a.setCreatedAt(rs.getTimestamp("created_at"));
-        return a;
+        return new Account(
+                rs.getInt("id"),
+                rs.getString("account_number"),
+                rs.getString("account_name"),
+                rs.getBigDecimal("balance"),
+                rs.getTimestamp("created_at"));
     }
 }
