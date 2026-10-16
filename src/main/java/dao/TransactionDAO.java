@@ -16,11 +16,10 @@ public class TransactionDAO {
     // FOR UPDATE holds the table lock until commit so two sessions running
     // inside their own transactions cannot both claim the same reference.
     public String generateReference(Connection conn) throws SQLException {
-        String sql = "SELECT COALESCE(MAX(id), 0) + 1 FROM transactions FOR UPDATE";
+        String sql = "SELECT id FROM transactions ORDER BY id DESC LIMIT 1 FOR UPDATE";
         try (PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
-            rs.next();
-            int next = rs.getInt(1);
+            int next = rs.next() ? rs.getInt(1) + 1 : 1;
             return String.format("TXN-%03d", next);
         }
     }
