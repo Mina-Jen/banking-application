@@ -1,7 +1,7 @@
 # Banking Application
 
 A simple console-based banking application built with **Java**, **JDBC**, and **MySQL (XAMPP)**.
-Final project for TESDA / CIICC.
+Final project for TESDA - Java Programming NCIII.
 
 ## Features
 1. Create Account
