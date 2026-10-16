@@ -3,6 +3,7 @@ import exception.AccountNotFoundException;
 import exception.BankingValidationException;
 import exception.InsufficientFundsException;
 import exception.InvalidAmountException;
+import exception.BankingException;
 import model.Account;
 import model.Transaction;
 import service.BankingService;
@@ -45,8 +46,7 @@ public class Main {
                     case "7" -> transactionHistory(in);
                     default -> System.out.println("Invalid choice. Enter a number from 0 to 7.");
                 }
-            } catch (AccountNotFoundException | AccountAlreadyExistsException | BankingValidationException
-                    | InvalidAmountException | InsufficientFundsException e) {
+            } catch (BankingException e) {
                 System.out.println("ERROR: " + e.getMessage());
             } catch (SQLException e) {
                 System.out.println("DATABASE ERROR: " + e.getMessage());

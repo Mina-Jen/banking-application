@@ -1,6 +1,6 @@
 package exception;
 
-public class AccountAlreadyExistsException extends Exception {
+public class AccountAlreadyExistsException extends BankingException {
     public AccountAlreadyExistsException(String message) {
         super(message);
     }
