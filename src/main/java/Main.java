@@ -20,13 +20,13 @@ public class Main {
     public static void main(String[] args) {
         Scanner in = new Scanner(System.in);
 
-        System.out.println("====================================");
+        System.out.println("------------------------------------");
         System.out.println("        BANKING APPLICATION");
-        System.out.println("====================================");
+        System.out.println("------------------------------------");
 
         while (true) {
             printMenu();
-            String choice = readLine(in, "Enter your choice: ");
+            String choice = readLine(in, "\nEnter your choice: ");
             try {
                 switch (choice) {
                     case "0" -> {
@@ -67,6 +67,7 @@ public class Main {
 
     private static void createAccount(Scanner in)
             throws SQLException, BankingException {
+
         String accountNumber = readLine(in, "Account Number: ");
         String accountName = readLine(in, "Account Holder Name: ");
         BigDecimal initialDeposit = readAmount(in, "Initial Deposit: ₱");
@@ -109,6 +110,7 @@ public class Main {
 
     private static void deposit(Scanner in)
             throws SQLException, BankingException {
+
         String accountNumber = readLine(in, "Account Number: ");
         BigDecimal amount = readAmount(in, "Deposit Amount: ₱");
 
