@@ -18,6 +18,7 @@ Final project for TESDA - Java Programming NCIII.
 - MySQL / MariaDB via XAMPP
 - MySQL Connector/J (JDBC driver)
 - JUnit 5 (business-rule tests)
+- H2 (in-memory database for tests only)
 - IntelliJ IDEA
 
 ## Project Structure
@@ -31,7 +32,7 @@ src/main/java/
 ├── exception/    Custom exceptions
 ├── util/         DatabaseConnection
 └── Main.java     Console menu
-src/test/java/    Business-rule tests
+src/test/java/    Validation and H2 integration tests
 database/         SQL script
 ```
 
@@ -52,10 +53,20 @@ The first build downloads MySQL Connector/J from Maven Central, so an internet c
 is needed once. After that everything is cached in `~/.m2`.
 
 ## Tests
-`mvn test` runs the business-rule checks in `src/test/java`. They cover the validation
-rules (amount precision and size, blank or over-long account number and name, transfer
-between identical accounts) and never open a database connection, so they pass on a
-machine without MySQL. The paths that write balances are proven by the demonstration below.
+`mvn test` runs two groups of tests in `src/test/java`. Neither needs MySQL, so they pass
+on a machine without it.
+
+- **Validation tests** (`BankingServiceValidationTest`) cover the input rules: amount
+  precision and size, blank or over-long account number and name, and transfer between
+  identical accounts. They never open a database connection.
+- **Integration tests** (`BankingServiceH2Test`) run the real service and DAOs against an
+  in-memory H2 database. They cover the paths that write balances: deposit, withdraw,
+  transfer (recorded on both accounts), duplicate accounts, and that a failed operation
+  leaves balances unchanged.
+
+Row locking and concurrent access are not covered by the automated tests, because H2
+behaves differently from MySQL there. The demonstration below checks the application
+against real MySQL.
 
 ## Demonstration Script
 Covers every required feature and a validation failure:
