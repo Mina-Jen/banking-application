@@ -2,11 +2,7 @@ package service;
 
 import dao.AccountDAO;
 import dao.TransactionDAO;
-import exception.AccountAlreadyExistsException;
-import exception.AccountNotFoundException;
-import exception.BankingValidationException;
-import exception.InsufficientFundsException;
-import exception.InvalidAmountException;
+import exception.*;
 import model.Account;
 import model.Transaction;
 import model.TransactionType;
@@ -42,8 +38,7 @@ public class BankingService {
     }
 
     public Account createAccount(String accountNumber, String accountName, BigDecimal initialDeposit)
-            throws SQLException, AccountAlreadyExistsException, BankingValidationException, InvalidAmountException {
-
+            throws SQLException, BankingException {
         requireAccountNumber(accountNumber);
         if (accountName == null || accountName.isBlank()) {
             throw new BankingValidationException("Account holder name must not be empty.");
@@ -86,8 +81,7 @@ public class BankingService {
     }
 
     public Account getAccount(String accountNumber)
-            throws SQLException, AccountNotFoundException, BankingValidationException {
-
+            throws SQLException, BankingException {
         requireAccountNumber(accountNumber);
         try (Connection conn = connections.getConnection()) {
             return findAccount(conn, accountNumber);
@@ -101,8 +95,7 @@ public class BankingService {
     }
 
     public Transaction deposit(String accountNumber, BigDecimal amount)
-            throws SQLException, AccountNotFoundException, InvalidAmountException, BankingValidationException {
-
+            throws SQLException, BankingException {
         requireAccountNumber(accountNumber);
         requirePositiveMoney(amount, "Deposit amount");
 
@@ -125,8 +118,7 @@ public class BankingService {
     }
 
     public Transaction withdraw(String accountNumber, BigDecimal amount)
-            throws SQLException, AccountNotFoundException, InvalidAmountException,
-                   InsufficientFundsException, BankingValidationException {
+            throws SQLException, BankingException {
 
         requireAccountNumber(accountNumber);
         requirePositiveMoney(amount, "Withdrawal amount");
@@ -153,8 +145,7 @@ public class BankingService {
      * it on both accounts, so each account's history explains its own balance.
      */
     public Transaction transfer(String sourceAccount, String destinationAccount, BigDecimal amount)
-            throws SQLException, AccountNotFoundException, InvalidAmountException,
-                   InsufficientFundsException, BankingValidationException {
+            throws SQLException, BankingException {
 
         requireAccountNumber(sourceAccount);
         requireAccountNumber(destinationAccount);
@@ -197,8 +188,7 @@ public class BankingService {
     }
 
     public List<Transaction> getTransactionHistory(String accountNumber)
-            throws SQLException, AccountNotFoundException, BankingValidationException {
-
+            throws SQLException, BankingException {
         requireAccountNumber(accountNumber);
         try (Connection conn = connections.getConnection()) {
             findAccount(conn, accountNumber);
