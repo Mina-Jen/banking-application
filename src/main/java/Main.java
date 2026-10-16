@@ -1,7 +1,3 @@
-import exception.AccountAlreadyExistsException;
-import exception.AccountNotFoundException;
-import exception.BankingValidationException;
-import exception.InsufficientFundsException;
 import exception.InvalidAmountException;
 import exception.BankingException;
 import model.Account;
@@ -70,8 +66,7 @@ public class Main {
     // ---------- 1. Create Account ----------
 
     private static void createAccount(Scanner in)
-            throws SQLException, AccountAlreadyExistsException, BankingValidationException, InvalidAmountException {
-
+            throws SQLException, BankingException {
         String accountNumber = readLine(in, "Account Number: ");
         String accountName = readLine(in, "Account Holder Name: ");
         BigDecimal initialDeposit = readAmount(in, "Initial Deposit: ₱");
@@ -86,7 +81,7 @@ public class Main {
     // ---------- 2. Balance Inquiry ----------
 
     private static void balanceInquiry(Scanner in)
-            throws SQLException, AccountNotFoundException, BankingValidationException {
+            throws SQLException, BankingException {
 
         Account account = banking.getAccount(readLine(in, "Account Number: "));
         System.out.printf("%nAccount Number : %s%n", account.getAccountNumber());
@@ -113,8 +108,7 @@ public class Main {
     // ---------- 4. Deposit ----------
 
     private static void deposit(Scanner in)
-            throws SQLException, AccountNotFoundException, InvalidAmountException, BankingValidationException {
-
+            throws SQLException, BankingException {
         String accountNumber = readLine(in, "Account Number: ");
         BigDecimal amount = readAmount(in, "Deposit Amount: ₱");
 
@@ -128,8 +122,7 @@ public class Main {
     // ---------- 5. Withdraw ----------
 
     private static void withdraw(Scanner in)
-            throws SQLException, AccountNotFoundException, InvalidAmountException,
-                   InsufficientFundsException, BankingValidationException {
+            throws SQLException, BankingException {
 
         String accountNumber = readLine(in, "Account Number: ");
         BigDecimal amount = readAmount(in, "Withdrawal Amount: ₱");
@@ -144,8 +137,7 @@ public class Main {
     // ---------- 6. Transfer ----------
 
     private static void transfer(Scanner in)
-            throws SQLException, AccountNotFoundException, InvalidAmountException,
-                   InsufficientFundsException, BankingValidationException {
+            throws SQLException, BankingException {
 
         String source = readLine(in, "From Account Number: ");
         String destination = readLine(in, "To Account Number: ");
@@ -162,7 +154,7 @@ public class Main {
     // ---------- 7. Transaction History ----------
 
     private static void transactionHistory(Scanner in)
-            throws SQLException, AccountNotFoundException, BankingValidationException {
+            throws SQLException, BankingException {
 
         String accountNumber = readLine(in, "Account Number: ");
         List<Transaction> transactions = banking.getTransactionHistory(accountNumber);
