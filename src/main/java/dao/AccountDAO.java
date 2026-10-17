@@ -51,11 +51,11 @@ public class AccountDAO {
     }
 
     // Sets the account to a new balance
-    public void updateBalance(Connection conn, String accountNumber, BigDecimal newBalance) throws SQLException {
-        String sql = "UPDATE accounts SET balance = ? WHERE account_number = ?";
+    public void updateBalance(Connection conn, int accountId, BigDecimal newBalance) throws SQLException {
+        String sql = "UPDATE accounts SET balance = ? WHERE id = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setBigDecimal(1, newBalance);
-            ps.setString(2, accountNumber);
+            ps.setInt(2, accountId);
             ps.executeUpdate();
         }
     }

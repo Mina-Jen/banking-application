@@ -105,8 +105,7 @@ public class BankingService {
                 Account account = findAccountForUpdate(conn, accountNumber);
                 account.deposit(amount);
                 requireStorableBalance(account.getBalance());
-                accountDao.updateBalance(conn, accountNumber, account.getBalance());
-                Transaction saved = insertTransaction(
+                accountDao.updateBalance(conn, account.getId(), account.getBalance());                Transaction saved = insertTransaction(
                         conn, accountNumber, TransactionType.DEPOSIT, amount, account.getBalance(), null);
                 conn.commit();
                 return saved;
@@ -128,8 +127,7 @@ public class BankingService {
             try {
                 Account account = findAccountForUpdate(conn, accountNumber);
                 account.withdraw(amount);
-                accountDao.updateBalance(conn, accountNumber, account.getBalance());
-                Transaction saved = insertTransaction(
+                accountDao.updateBalance(conn, account.getId(), account.getBalance());                Transaction saved = insertTransaction(
                         conn, accountNumber, TransactionType.WITHDRAW, amount, account.getBalance(), null);
                 conn.commit();
                 return saved;
@@ -168,12 +166,17 @@ public class BankingService {
                 Account source = sourceLockedFirst ? firstLocked : secondLocked;
                 Account destination = sourceLockedFirst ? secondLocked : firstLocked;
 
+                if (source.getId() == destination.getId()) {
+                    throw new BankingValidationException(
+                            "Source and destination accounts must be different.");
+                }
+
                 source.withdraw(amount);
                 destination.deposit(amount);
                 requireStorableBalance(destination.getBalance());
 
-                accountDao.updateBalance(conn, sourceAccount, source.getBalance());
-                accountDao.updateBalance(conn, destinationAccount, destination.getBalance());
+                accountDao.updateBalance(conn, source.getId(), source.getBalance());
+                accountDao.updateBalance(conn, destination.getId(), destination.getBalance());
                 Transaction sourceEntry = insertTransaction(
                         conn, sourceAccount, TransactionType.TRANSFER, amount, source.getBalance(), destinationAccount);
                 insertTransaction(

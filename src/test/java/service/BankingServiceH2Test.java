@@ -82,6 +82,19 @@ class BankingServiceH2Test {
     }
 
     @Test
+    void transferBetweenSameAccountInDifferentCaseIsRejected() throws Exception {
+        // MySQL treats "ABC123" and "abc123" as the same row; the service must too.
+        service.createAccount("ABC123", "Juan", new BigDecimal("1000"));
+
+        BankingValidationException e = assertThrows(BankingValidationException.class,
+                () -> service.transfer("ABC123", "abc123", new BigDecimal("100")));
+
+        assertEquals("Source and destination accounts must be different.", e.getMessage());
+        assertMoney("1000", service.getAccount("ABC123").getBalance());   // no money created
+        assertEquals(1, service.getTransactionHistory("ABC123").size());  // only the opening deposit
+    }
+
+    @Test
     void duplicateAccountNumberIsRejected() throws Exception {
         service.createAccount("100001", "Juan", BigDecimal.ZERO);
 
