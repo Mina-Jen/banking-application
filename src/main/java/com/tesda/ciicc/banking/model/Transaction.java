@@ -1,4 +1,4 @@
-package model;
+package com.tesda.ciicc.banking.model;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;

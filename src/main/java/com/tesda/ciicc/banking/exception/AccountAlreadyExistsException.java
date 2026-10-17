@@ -1,4 +1,4 @@
-package exception;
+package com.tesda.ciicc.banking.exception;
 
 public class AccountAlreadyExistsException extends BankingException {
     private static final long serialVersionUID = 1L;

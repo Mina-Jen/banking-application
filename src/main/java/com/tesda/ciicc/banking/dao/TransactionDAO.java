@@ -1,7 +1,7 @@
-package dao;
+package com.tesda.ciicc.banking.dao;
 
-import model.Transaction;
-import model.TransactionType;
+import com.tesda.ciicc.banking.model.Transaction;
+import com.tesda.ciicc.banking.model.TransactionType;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;

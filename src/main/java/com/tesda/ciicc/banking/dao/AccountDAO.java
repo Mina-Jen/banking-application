@@ -1,6 +1,6 @@
-package dao;
+package com.tesda.ciicc.banking.dao;
 
-import model.Account;
+import com.tesda.ciicc.banking.model.Account;
 
 import java.math.BigDecimal;
 import java.sql.Connection;

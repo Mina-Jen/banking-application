@@ -13,7 +13,7 @@
     <properties>
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <exec.mainClass>Main</exec.mainClass>
+        <exec.mainClass>com.tesda.ciicc.banking.Main</exec.mainClass>
     </properties>
 
     <dependencies>

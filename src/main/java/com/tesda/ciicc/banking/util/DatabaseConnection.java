@@ -1,4 +1,4 @@
-package util;
+package com.tesda.ciicc.banking.util;
 
 import java.sql.Connection;
 import java.sql.DriverManager;

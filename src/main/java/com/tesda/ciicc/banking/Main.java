@@ -1,8 +1,10 @@
-import exception.InvalidAmountException;
-import exception.BankingException;
-import model.Account;
-import model.Transaction;
-import service.BankingService;
+package com.tesda.ciicc.banking;
+
+import com.tesda.ciicc.banking.exception.InvalidAmountException;
+import com.tesda.ciicc.banking.exception.BankingException;
+import com.tesda.ciicc.banking.model.Account;
+import com.tesda.ciicc.banking.model.Transaction;
+import com.tesda.ciicc.banking.service.BankingService;
 
 import java.math.BigDecimal;
 import java.text.DecimalFormatSymbols;

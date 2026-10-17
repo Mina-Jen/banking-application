@@ -1,7 +1,11 @@
-package service;
+package com.tesda.ciicc.banking.service;
 
-import exception.*;
-import model.Transaction;
+import com.tesda.ciicc.banking.exception.AccountAlreadyExistsException;
+import com.tesda.ciicc.banking.exception.AccountNotFoundException;
+import com.tesda.ciicc.banking.exception.BankingValidationException;
+import com.tesda.ciicc.banking.exception.InsufficientFundsException;
+import com.tesda.ciicc.banking.model.Transaction;
+import com.tesda.ciicc.banking.service.BankingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

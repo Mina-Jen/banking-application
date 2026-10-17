@@ -24,16 +24,21 @@ Final project for TESDA - Java Programming NCIII.
 ## Project Structure
 
 ```
-pom.xml           Maven build; the JDBC driver is resolved from Maven Central
-src/main/java/
-├── model/        Account, Transaction
-├── dao/          AccountDAO, TransactionDAO
-├── service/      BankingService (business logic and validation)
-├── exception/    Custom exceptions
-├── util/         DatabaseConnection
-└── Main.java     Console menu
-src/test/java/    Validation and H2 integration tests
-database/         SQL script
+banking-application/
+├── pom.xml                      Maven build; the JDBC driver is resolved from Maven Central
+├── database/
+│   └── banking_db.sql           MySQL script (tables)
+└── src/
+    ├── main/java/com/tesda/ciicc/banking/
+    │   ├── Main.java            Console menu
+    │   ├── service/             BankingService (business logic and validation)
+    │   ├── dao/                 AccountDAO, TransactionDAO (SQL only)
+    │   ├── model/               Account, Transaction, TransactionType
+    │   ├── exception/           BankingException and its subclasses
+    │   └── util/                ConnectionProvider, DatabaseConnection
+    └── test/
+        ├── java/com/tesda/ciicc/banking/   Validation and H2 integration tests
+        └── resources/schema-h2.sql         Test-only database schema
 ```
 
 ## Setup
@@ -42,7 +47,8 @@ database/         SQL script
 3. Database settings default to the XAMPP values (`root`, empty password,
    `jdbc:mysql://localhost:3306/banking_db`). To use different ones, set the
    `BANKING_DB_URL`, `BANKING_DB_USER` and `BANKING_DB_PASSWORD` environment
-   variables instead of editing `src/main/java/util/DatabaseConnection.java` —
+   variables instead of editing
+   `src/main/java/com/tesda/ciicc/banking/util/DatabaseConnection.java` —
    that keeps real credentials out of the repository.
 4. Run the application:
    - From a terminal: `mvn compile exec:java`

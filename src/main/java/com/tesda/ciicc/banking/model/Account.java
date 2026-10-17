@@ -1,7 +1,7 @@
-package model;
+package com.tesda.ciicc.banking.model;
 
-import exception.InsufficientFundsException;
-import exception.InvalidAmountException;
+import com.tesda.ciicc.banking.exception.InsufficientFundsException;
+import com.tesda.ciicc.banking.exception.InvalidAmountException;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;

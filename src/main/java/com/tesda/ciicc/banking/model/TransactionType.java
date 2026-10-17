@@ -1,4 +1,4 @@
-package model;
+package com.tesda.ciicc.banking.model;
 
 public enum TransactionType {
     DEPOSIT,

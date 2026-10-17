@@ -1,7 +1,8 @@
-package service;
+package com.tesda.ciicc.banking.service;
 
-import exception.BankingValidationException;
-import exception.InvalidAmountException;
+import com.tesda.ciicc.banking.exception.BankingValidationException;
+import com.tesda.ciicc.banking.exception.InvalidAmountException;
+import com.tesda.ciicc.banking.service.BankingService;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
