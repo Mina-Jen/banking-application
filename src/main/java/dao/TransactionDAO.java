@@ -13,8 +13,8 @@ import java.util.List;
 public class TransactionDAO {
 
     // Creates the next reference: TXN-001, TXN-002, ...
-    // FOR UPDATE holds the table lock until commit so two sessions running
-    // inside their own transactions cannot both claim the same reference.
+    // FOR UPDATE locks the newest transaction row until commit, so two sessions
+    // running at the same time cannot both claim the same reference.
     public String generateReference(Connection conn) throws SQLException {
         String sql = "SELECT id FROM transactions ORDER BY id DESC LIMIT 1 FOR UPDATE";
         try (PreparedStatement ps = conn.prepareStatement(sql);

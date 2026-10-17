@@ -2,7 +2,11 @@ package service;
 
 import dao.AccountDAO;
 import dao.TransactionDAO;
-import exception.*;
+import exception.AccountAlreadyExistsException;
+import exception.AccountNotFoundException;
+import exception.BankingException;
+import exception.BankingValidationException;
+import exception.InvalidAmountException;
 import model.Account;
 import model.Transaction;
 import model.TransactionType;
@@ -16,8 +20,9 @@ import java.sql.SQLIntegrityConstraintViolationException;
 import java.util.List;
 
 /**
- * Business rules of the banking application. Each method owns its database
- * connection and commits only when every write of that operation succeeded.
+ * Business rules of the banking application. Every operation that changes data
+ * runs inside one database transaction: it is committed only when every write
+ * succeeded, and rolled back otherwise.
  */
 public class BankingService {
 
@@ -37,51 +42,35 @@ public class BankingService {
         this.connections = connections;
     }
 
+    // =====================================================================
+    //  Accounts
+    // =====================================================================
+
+    /** Creates an account. A positive initial deposit is also recorded as its first transaction. */
     public Account createAccount(String accountNumber, String accountName, BigDecimal initialDeposit)
             throws SQLException, BankingException {
+
         requireAccountNumber(accountNumber);
-        if (accountName == null || accountName.isBlank()) {
-            throw new BankingValidationException("Account holder name must not be empty.");
-        }
-        if (accountName.length() > MAX_ACCOUNT_NAME_LENGTH) {
-            throw new BankingValidationException(
-                    "Account holder name must be at most " + MAX_ACCOUNT_NAME_LENGTH + " characters.");
-        }
+        String name = requireAccountName(accountName);
         if (initialDeposit == null || initialDeposit.signum() < 0) {
             throw new InvalidAmountException("Initial deposit must be zero or greater.");
         }
         requireMoney(initialDeposit, "Initial deposit");
 
-        try (Connection conn = connections.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                if (accountDao.findByAccountNumber(conn, accountNumber) != null) {
-                    throw new AccountAlreadyExistsException(
-                            "Account number " + accountNumber + " already exists.");
-                }
-                accountDao.insert(conn, new Account(accountNumber, accountName.trim(), initialDeposit));
-                if (initialDeposit.signum() > 0) {
-                    // The opening deposit is the first line of the account's history.
-                    insertTransaction(conn, accountNumber, TransactionType.DEPOSIT,
-                            initialDeposit, initialDeposit, null);
-                }
-                conn.commit();
-            } catch (SQLIntegrityConstraintViolationException e) {
-                // Two sessions can both pass the existence check above; the
-                // UNIQUE index is what actually protects the data.
-                conn.rollback();
-                throw new AccountAlreadyExistsException(
-                        "Account number " + accountNumber + " already exists.");
-            } catch (Exception e) {
-                conn.rollback();
-                throw e;
+        return inTransaction(conn -> {
+            if (accountDao.findByAccountNumber(conn, accountNumber) != null) {
+                throw new AccountAlreadyExistsException("Account number " + accountNumber + " already exists.");
+            }
+            insertAccount(conn, new Account(accountNumber, name, initialDeposit));
+            if (initialDeposit.signum() > 0) {
+                insertTransaction(conn, accountNumber, TransactionType.DEPOSIT,
+                        initialDeposit, initialDeposit, null);
             }
             return accountDao.findByAccountNumber(conn, accountNumber);
-        }
+        });
     }
 
-    public Account getAccount(String accountNumber)
-            throws SQLException, BankingException {
+    public Account getAccount(String accountNumber) throws SQLException, BankingException {
         requireAccountNumber(accountNumber);
         try (Connection conn = connections.getConnection()) {
             return findAccount(conn, accountNumber);
@@ -94,26 +83,24 @@ public class BankingService {
         }
     }
 
+    // =====================================================================
+    //  Money movement
+    // =====================================================================
+
     public Transaction deposit(String accountNumber, BigDecimal amount)
             throws SQLException, BankingException {
+
         requireAccountNumber(accountNumber);
         requirePositiveMoney(amount, "Deposit amount");
 
-        try (Connection conn = connections.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                Account account = findAccountForUpdate(conn, accountNumber);
-                account.deposit(amount);
-                requireStorableBalance(account.getBalance());
-                accountDao.updateBalance(conn, account.getId(), account.getBalance());                Transaction saved = insertTransaction(
-                        conn, accountNumber, TransactionType.DEPOSIT, amount, account.getBalance(), null);
-                conn.commit();
-                return saved;
-            } catch (Exception e) {
-                conn.rollback();
-                throw e;
-            }
-        }
+        return inTransaction(conn -> {
+            Account account = findAccountForUpdate(conn, accountNumber);
+            account.deposit(amount);
+            requireStorableBalance(account.getBalance());
+            accountDao.updateBalance(conn, account.getId(), account.getBalance());
+            return insertTransaction(conn, accountNumber, TransactionType.DEPOSIT,
+                    amount, account.getBalance(), null);
+        });
     }
 
     public Transaction withdraw(String accountNumber, BigDecimal amount)
@@ -122,25 +109,20 @@ public class BankingService {
         requireAccountNumber(accountNumber);
         requirePositiveMoney(amount, "Withdrawal amount");
 
-        try (Connection conn = connections.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                Account account = findAccountForUpdate(conn, accountNumber);
-                account.withdraw(amount);
-                accountDao.updateBalance(conn, account.getId(), account.getBalance());                Transaction saved = insertTransaction(
-                        conn, accountNumber, TransactionType.WITHDRAW, amount, account.getBalance(), null);
-                conn.commit();
-                return saved;
-            } catch (Exception e) {
-                conn.rollback();
-                throw e;
-            }
-        }
+        return inTransaction(conn -> {
+            Account account = findAccountForUpdate(conn, accountNumber);
+            account.withdraw(amount);
+            accountDao.updateBalance(conn, account.getId(), account.getBalance());
+            return insertTransaction(conn, accountNumber, TransactionType.WITHDRAW,
+                    amount, account.getBalance(), null);
+        });
     }
 
     /**
      * Moves money between two accounts as one database transaction and records
      * it on both accounts, so each account's history explains its own balance.
+     *
+     * @return the transaction record of the source account
      */
     public Transaction transfer(String sourceAccount, String destinationAccount, BigDecimal amount)
             throws SQLException, BankingException {
@@ -149,79 +131,127 @@ public class BankingService {
         requireAccountNumber(destinationAccount);
         requirePositiveMoney(amount, "Transfer amount");
         if (sourceAccount.equals(destinationAccount)) {
-            throw new BankingValidationException(
-                    "Source and destination accounts must be different.");
+            throw sameAccountError();
         }
 
+        return inTransaction(conn -> {
+            // Lock in account-number order rather than source-first order, so two
+            // opposite transfers cannot each hold one lock and wait for the other.
+            boolean sourceLockedFirst = sourceAccount.compareTo(destinationAccount) < 0;
+            Account firstLocked = findAccountForUpdate(
+                    conn, sourceLockedFirst ? sourceAccount : destinationAccount);
+            Account secondLocked = findAccountForUpdate(
+                    conn, sourceLockedFirst ? destinationAccount : sourceAccount);
+            Account source = sourceLockedFirst ? firstLocked : secondLocked;
+            Account destination = sourceLockedFirst ? secondLocked : firstLocked;
+
+            // The equals() check above only catches identical strings. MySQL compares
+            // account numbers case-insensitively, so "abc1" and "ABC1" are ONE row.
+            // Comparing the database ids catches every spelling of the same account.
+            if (source.getId() == destination.getId()) {
+                throw sameAccountError();
+            }
+
+            source.withdraw(amount);
+            destination.deposit(amount);
+            requireStorableBalance(destination.getBalance());
+
+            accountDao.updateBalance(conn, source.getId(), source.getBalance());
+            accountDao.updateBalance(conn, destination.getId(), destination.getBalance());
+            Transaction sourceEntry = insertTransaction(conn, sourceAccount, TransactionType.TRANSFER,
+                    amount, source.getBalance(), destinationAccount);
+            insertTransaction(conn, destinationAccount, TransactionType.TRANSFER,
+                    amount, destination.getBalance(), sourceAccount);
+            return sourceEntry;
+        });
+    }
+
+    // =====================================================================
+    //  History
+    // =====================================================================
+
+    public List<Transaction> getTransactionHistory(String accountNumber)
+            throws SQLException, BankingException {
+
+        requireAccountNumber(accountNumber);
+        try (Connection conn = connections.getConnection()) {
+            findAccount(conn, accountNumber);   // fails with "does not exist" for unknown accounts
+            return transactionDao.findByAccountNumber(conn, accountNumber);
+        }
+    }
+
+    // =====================================================================
+    //  Database transaction handling
+    // =====================================================================
+
+    /** A piece of work that runs on one connection, inside one database transaction. */
+    @FunctionalInterface
+    private interface TransactionalWork<T> {
+        T run(Connection conn) throws SQLException, BankingException;
+    }
+
+    /**
+     * Opens a connection, runs the work, and commits. If anything fails, the
+     * work is rolled back and the original exception is rethrown.
+     */
+    private <T> T inTransaction(TransactionalWork<T> work) throws SQLException, BankingException {
         try (Connection conn = connections.getConnection()) {
             conn.setAutoCommit(false);
             try {
-                // Locked in account-number order rather than source-first order, so two
-                // opposite transfers cannot each hold one lock and wait for the other.
-                boolean sourceLockedFirst = sourceAccount.compareTo(destinationAccount) < 0;
-                Account firstLocked = findAccountForUpdate(
-                        conn, sourceLockedFirst ? sourceAccount : destinationAccount);
-                Account secondLocked = findAccountForUpdate(
-                        conn, sourceLockedFirst ? destinationAccount : sourceAccount);
-                Account source = sourceLockedFirst ? firstLocked : secondLocked;
-                Account destination = sourceLockedFirst ? secondLocked : firstLocked;
-
-                if (source.getId() == destination.getId()) {
-                    throw new BankingValidationException(
-                            "Source and destination accounts must be different.");
-                }
-
-                source.withdraw(amount);
-                destination.deposit(amount);
-                requireStorableBalance(destination.getBalance());
-
-                accountDao.updateBalance(conn, source.getId(), source.getBalance());
-                accountDao.updateBalance(conn, destination.getId(), destination.getBalance());
-                Transaction sourceEntry = insertTransaction(
-                        conn, sourceAccount, TransactionType.TRANSFER, amount, source.getBalance(), destinationAccount);
-                insertTransaction(
-                        conn, destinationAccount, TransactionType.TRANSFER, amount, destination.getBalance(), sourceAccount);
+                T result = work.run(conn);
                 conn.commit();
-                return sourceEntry;
-            } catch (Exception e) {
-                conn.rollback();
+                return result;
+            } catch (SQLException | BankingException | RuntimeException e) {
+                try {
+                    conn.rollback();
+                } catch (SQLException rollbackFailure) {
+                    e.addSuppressed(rollbackFailure);   // never hide the real error
+                }
                 throw e;
             }
         }
     }
 
-    public List<Transaction> getTransactionHistory(String accountNumber)
-            throws SQLException, BankingException {
-        requireAccountNumber(accountNumber);
-        try (Connection conn = connections.getConnection()) {
-            findAccount(conn, accountNumber);
-            return transactionDao.findByAccountNumber(conn, accountNumber);
-        }
-    }
-
-    // ---------- helpers ----------
+    // =====================================================================
+    //  Lookup and persistence helpers
+    // =====================================================================
 
     private Account findAccount(Connection conn, String accountNumber)
             throws SQLException, AccountNotFoundException {
-        Account account = accountDao.findByAccountNumber(conn, accountNumber);
+        return requireFound(accountDao.findByAccountNumber(conn, accountNumber), accountNumber);
+    }
+
+    /** Same as {@link #findAccount} but locks the row until the transaction ends. */
+    private Account findAccountForUpdate(Connection conn, String accountNumber)
+            throws SQLException, AccountNotFoundException {
+        return requireFound(accountDao.findByAccountNumberForUpdate(conn, accountNumber), accountNumber);
+    }
+
+    private static Account requireFound(Account account, String accountNumber)
+            throws AccountNotFoundException {
         if (account == null) {
             throw new AccountNotFoundException("Account " + accountNumber + " does not exist.");
         }
         return account;
     }
 
-    private Account findAccountForUpdate(Connection conn, String accountNumber)
-            throws SQLException, AccountNotFoundException {
-        Account account = accountDao.findByAccountNumberForUpdate(conn, accountNumber);
-        if (account == null) {
-            throw new AccountNotFoundException("Account " + accountNumber + " does not exist.");
+    /**
+     * Two sessions can both pass the "already exists" check; the UNIQUE index is
+     * what actually protects the data, so a violation on this INSERT means duplicate.
+     */
+    private void insertAccount(Connection conn, Account account)
+            throws SQLException, AccountAlreadyExistsException {
+        try {
+            accountDao.insert(conn, account);
+        } catch (SQLIntegrityConstraintViolationException e) {
+            throw new AccountAlreadyExistsException(
+                    "Account number " + account.getAccountNumber() + " already exists.");
         }
-        return account;
     }
 
     private Transaction insertTransaction(Connection conn, String accountNumber, TransactionType type,
-                                         BigDecimal amount, BigDecimal balanceAfter,
-                                         String referenceAccount) throws SQLException {
+                                          BigDecimal amount, BigDecimal balanceAfter,
+                                          String referenceAccount) throws SQLException {
         Transaction transaction = new Transaction();
         transaction.setTransactionReference(transactionDao.generateReference(conn));
         transaction.setAccountNumber(accountNumber);
@@ -231,6 +261,14 @@ public class BankingService {
         transaction.setReferenceAccount(referenceAccount);
         transactionDao.insert(conn, transaction);
         return transaction;
+    }
+
+    // =====================================================================
+    //  Validation
+    // =====================================================================
+
+    private static BankingValidationException sameAccountError() {
+        return new BankingValidationException("Source and destination accounts must be different.");
     }
 
     private static void requireAccountNumber(String accountNumber) throws BankingValidationException {
@@ -243,6 +281,27 @@ public class BankingService {
         }
     }
 
+    /** Returns the trimmed name; the length limit applies to what is actually stored. */
+    private static String requireAccountName(String accountName) throws BankingValidationException {
+        if (accountName == null || accountName.isBlank()) {
+            throw new BankingValidationException("Account holder name must not be empty.");
+        }
+        String trimmed = accountName.trim();
+        if (trimmed.length() > MAX_ACCOUNT_NAME_LENGTH) {
+            throw new BankingValidationException(
+                    "Account holder name must be at most " + MAX_ACCOUNT_NAME_LENGTH + " characters.");
+        }
+        return trimmed;
+    }
+
+    /** An amount that is greater than zero and storable (see {@link #requireMoney}). */
+    private static void requirePositiveMoney(BigDecimal amount, String label) throws InvalidAmountException {
+        if (amount == null || amount.signum() <= 0) {
+            throw new InvalidAmountException(label + " must be greater than zero.");
+        }
+        requireMoney(amount, label);
+    }
+
     /**
      * Rejects amounts MySQL would silently round: DECIMAL(15,2) keeps two
      * decimals, so 0.001 would be stored as 0.00 and the money would disappear.
@@ -252,13 +311,6 @@ public class BankingService {
             throw new InvalidAmountException(label + " must not use more than two decimal places.");
         }
         requireStorableBalance(amount);
-    }
-
-    private static void requirePositiveMoney(BigDecimal amount, String label) throws InvalidAmountException {
-        if (amount == null || amount.signum() <= 0) {
-            throw new InvalidAmountException(label + " must be greater than zero.");
-        }
-        requireMoney(amount, label);
     }
 
     private static void requireStorableBalance(BigDecimal value) throws InvalidAmountException {

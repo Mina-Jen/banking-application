@@ -73,6 +73,7 @@ public class AccountDAO {
             }
         }
     }
+
     // Converts one database row into an Account object
     private Account mapRow(ResultSet rs) throws SQLException {
         return new Account(

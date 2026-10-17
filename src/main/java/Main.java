@@ -5,6 +5,8 @@ import model.Transaction;
 import service.BankingService;
 
 import java.math.BigDecimal;
+import java.text.DecimalFormatSymbols;
+import java.util.Locale;
 import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.time.format.DateTimeFormatter;
@@ -14,7 +16,8 @@ import java.util.Scanner;
 public class Main {
 
     private static final BankingService banking = new BankingService();
-    private static final DecimalFormat MONEY = new DecimalFormat("#,##0.00");
+    private static final DecimalFormat MONEY =
+            new DecimalFormat("#,##0.00", DecimalFormatSymbols.getInstance(Locale.US));
     private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public static void main(String[] args) {
