@@ -158,9 +158,9 @@ public class BankingService {
 
             accountDao.updateBalance(conn, source.getId(), source.getBalance());
             accountDao.updateBalance(conn, destination.getId(), destination.getBalance());
-            Transaction sourceEntry = insertTransaction(conn, sourceAccount, TransactionType.TRANSFER,
+            Transaction sourceEntry = insertTransaction(conn, sourceAccount, TransactionType.TRANSFER_OUT,
                     amount, source.getBalance(), destinationAccount);
-            insertTransaction(conn, destinationAccount, TransactionType.TRANSFER,
+            insertTransaction(conn, destinationAccount, TransactionType.TRANSFER_IN,
                     amount, destination.getBalance(), sourceAccount);
             return sourceEntry;
         });

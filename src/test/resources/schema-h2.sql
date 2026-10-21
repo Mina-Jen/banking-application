@@ -15,7 +15,7 @@ CREATE TABLE transactions (
                               id                    INT AUTO_INCREMENT PRIMARY KEY,
                               transaction_reference VARCHAR(20)   NOT NULL UNIQUE,
                               account_number        VARCHAR_IGNORECASE(20) NOT NULL,
-                              transaction_type      VARCHAR(10)   NOT NULL,   -- VARCHAR instead of ENUM to keep H2 simple
+                              transaction_type      ENUM('DEPOSIT','WITHDRAW','TRANSFER_OUT','TRANSFER_IN') NOT NULL,
                               amount                DECIMAL(15,2) NOT NULL,
                               balance               DECIMAL(15,2) NOT NULL,
                               reference_account     VARCHAR_IGNORECASE(20) NULL,

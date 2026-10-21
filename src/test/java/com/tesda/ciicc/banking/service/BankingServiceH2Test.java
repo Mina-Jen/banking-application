@@ -5,6 +5,7 @@ import com.tesda.ciicc.banking.exception.AccountNotFoundException;
 import com.tesda.ciicc.banking.exception.BankingValidationException;
 import com.tesda.ciicc.banking.exception.InsufficientFundsException;
 import com.tesda.ciicc.banking.model.Transaction;
+import com.tesda.ciicc.banking.model.TransactionType;
 import com.tesda.ciicc.banking.service.BankingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -67,12 +68,40 @@ class BankingServiceH2Test {
         service.createAccount("100001", "Juan", new BigDecimal("5500"));
         service.createAccount("100002", "Pedro", new BigDecimal("8500"));
 
-        service.transfer("100001", "100002", new BigDecimal("2000"));
+        Transaction returned = service.transfer("100001", "100002", new BigDecimal("2000"));
 
         assertMoney("3500",  service.getAccount("100001").getBalance());
         assertMoney("10500", service.getAccount("100002").getBalance());
-        assertEquals(2, service.getTransactionHistory("100001").size());
-        assertEquals(2, service.getTransactionHistory("100002").size());
+        List<Transaction> sourceHistory = service.getTransactionHistory("100001");
+        List<Transaction> destinationHistory = service.getTransactionHistory("100002");
+        assertEquals(2, sourceHistory.size());
+        assertEquals(2, destinationHistory.size());
+
+        assertEquals(TransactionType.TRANSFER_OUT, returned.getTransactionType());
+        assertTransferEntry(sourceHistory.get(1), TransactionType.TRANSFER_OUT, "100002", "3500");
+        assertTransferEntry(destinationHistory.get(1), TransactionType.TRANSFER_IN, "100001", "10500");
+    }
+
+    @Test
+    void transferTypeFollowsDirectionNotLockOrder() throws Exception {
+        // "100002" -> "100001": the destination is locked first, but the source
+        // must still be TRANSFER_OUT and the destination TRANSFER_IN.
+        service.createAccount("100001", "Juan", new BigDecimal("1000"));
+        service.createAccount("100002", "Pedro", new BigDecimal("1000"));
+
+        service.transfer("100002", "100001", new BigDecimal("300"));
+
+        assertTransferEntry(service.getTransactionHistory("100002").get(1),
+                TransactionType.TRANSFER_OUT, "100001", "700");
+        assertTransferEntry(service.getTransactionHistory("100001").get(1),
+                TransactionType.TRANSFER_IN, "100002", "1300");
+    }
+
+    private static void assertTransferEntry(Transaction t, TransactionType expectedType,
+                                            String expectedReferenceAccount, String expectedBalance) {
+        assertEquals(expectedType, t.getTransactionType());
+        assertEquals(expectedReferenceAccount, t.getReferenceAccount());
+        assertMoney(expectedBalance, t.getBalance());
     }
 
     @Test

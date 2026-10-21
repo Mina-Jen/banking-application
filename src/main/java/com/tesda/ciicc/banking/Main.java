@@ -167,7 +167,8 @@ public class Main {
         List<Transaction> transactions = banking.getTransactionHistory(accountNumber);
 
         System.out.printf("%nTransaction history of %s%n", accountNumber);
-        System.out.printf("%-9s %-9s %13s %-19s %-10s %13s%n",
+        // REF fits the 18-char references (TXN- + suffix); TYPE fits TRANSFER_OUT (12 chars)
+        System.out.printf("%-18s %-12s %13s %-19s %-10s %13s%n",
                 "REF", "TYPE", "AMOUNT", "DATE", "REF ACCT", "BALANCE");
         if (transactions.isEmpty()) {
             System.out.println("(no transactions recorded)");
@@ -175,7 +176,7 @@ public class Main {
         }
         for (Transaction t : transactions) {
             String referenceAccount = t.getReferenceAccount() == null ? "-" : t.getReferenceAccount();
-            System.out.printf("%-9s %-9s %13s %-19s %-10s %13s%n",
+            System.out.printf("%-18s %-12s %13s %-19s %-10s %13s%n",
                     t.getTransactionReference(),
                     t.getTransactionType(),
                     money(t.getAmount()),
