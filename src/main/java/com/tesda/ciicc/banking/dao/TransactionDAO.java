@@ -3,6 +3,7 @@ package com.tesda.ciicc.banking.dao;
 import com.tesda.ciicc.banking.model.Transaction;
 import com.tesda.ciicc.banking.model.TransactionType;
 
+import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -12,16 +13,24 @@ import java.util.List;
 
 public class TransactionDAO {
 
-    // Creates the next reference: TXN-001, TXN-002, ...
-    // FOR UPDATE locks the newest transaction row until commit, so two sessions
-    // running at the same time cannot both claim the same reference.
+    private static final SecureRandom RANDOM = new SecureRandom();
+
+    // Builds a reference without reading the transactions table, so no row or
+    // table lock is needed: "TXN-" + current time + random suffix, both in
+    // base 36 (4 + 8 + 6 = 18 chars, fits VARCHAR(20); still <= 20 even when
+    // the time part grows to 10 chars around the year 5187).
+    // The UNIQUE index on transaction_reference is the final safety net.
     public String generateReference(Connection conn) throws SQLException {
-        String sql = "SELECT id FROM transactions ORDER BY id DESC LIMIT 1 FOR UPDATE";
-        try (PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            int next = rs.next() ? rs.getInt(1) + 1 : 1;
-            return String.format("TXN-%03d", next);
+        String suffix = Long.toString(System.currentTimeMillis(), 36) + randomBase36(6);
+        return "TXN-" + suffix;
+    }
+
+    private static String randomBase36(int length) {
+        StringBuilder sb = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            sb.append(Character.forDigit(RANDOM.nextInt(36), 36));
         }
+        return sb.toString();
     }
 
     // Saves a transaction record
