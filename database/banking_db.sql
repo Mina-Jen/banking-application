@@ -1,3 +1,6 @@
+-- Phase 0 console bootstrap only. This file is frozen.
+-- The Spring Boot backend owns the schema through Flyway:
+--   backend/src/main/resources/db/migration/
 CREATE DATABASE IF NOT EXISTS banking_db;
 USE banking_db;
 

@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: banking-backend
+
+  datasource:
+    # Defaults match a local XAMPP install, which runs MariaDB. Point
+    # BANKING_DB_URL at a jdbc:mysql: URL for a MySQL server; the MySQL driver
+    # is on the classpath for that case.
+    url: ${BANKING_DB_URL:jdbc:mariadb://localhost:3306/banking_db?createDatabaseIfNotExist=true}
+    username: ${BANKING_DB_USER:root}
+    password: ${BANKING_DB_PASSWORD:}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    # The XAMPP database was created before Flyway was introduced. Baseline it
+    # at V1 instead of re-running CREATE TABLE against the existing tables.
+    baseline-on-migrate: true
+    baseline-version: 1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
