@@ -21,6 +21,25 @@ spring:
     baseline-on-migrate: true
     baseline-version: 1
 
+# Phase 2 authentication. REQUIRED environment variable:
+#   JWT_SECRET     signing key for the tokens, at least 32 random characters
+#                  (generate one with `openssl rand -base64 48`). The app
+#                  refuses to start without it; it is deliberately NOT given
+#                  a default, because secrets never live in code.
+# Optional environment variables:
+#   ADMIN_USERNAME username of the first admin (default: admin)
+#   ADMIN_PASSWORD password for that admin; when unset, no admin is created
+app:
+  auth:
+    # Login rate limiting: after this many failed logins for one username + IP
+    # within the sliding window, further attempts get 429 until the window
+    # slides on. Counters are in memory and reset on restart.
+    max-failed-logins: 5
+    failure-window-minutes: 15
+    # Token lifetimes: short-lived access token, long-lived refresh token.
+    access-token-minutes: 15
+    refresh-token-days: 7
+
 management:
   endpoints:
     web:

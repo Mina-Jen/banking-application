@@ -1,5 +1,6 @@
 package com.tesda.ciicc.banking.backend.service;
 
+import com.tesda.ciicc.banking.backend.auth.CurrentUser;
 import com.tesda.ciicc.banking.backend.exception.AccountAlreadyExistsException;
 import com.tesda.ciicc.banking.backend.exception.AccountNotFoundException;
 import com.tesda.ciicc.banking.backend.exception.BankingException;
@@ -7,6 +8,7 @@ import com.tesda.ciicc.banking.backend.exception.BankingValidationException;
 import com.tesda.ciicc.banking.backend.exception.InsufficientFundsException;
 import com.tesda.ciicc.banking.backend.exception.InvalidAmountException;
 import com.tesda.ciicc.banking.backend.model.Account;
+import com.tesda.ciicc.banking.backend.model.Role;
 import com.tesda.ciicc.banking.backend.model.Transaction;
 import com.tesda.ciicc.banking.backend.model.TransactionType;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -42,7 +45,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>These tests need Docker and are skipped when it is unavailable.
  */
-@SpringBootTest(properties = "spring.datasource.hikari.maximum-pool-size=20")
+@SpringBootTest(properties = {
+        "spring.datasource.hikari.maximum-pool-size=20",
+        "JWT_SECRET=mysql-integration-test-secret-0123456789abcdef"
+})
 @Testcontainers(disabledWithoutDocker = true)
 class BankingServiceMySQLTest {
 
@@ -54,6 +60,9 @@ class BankingServiceMySQLTest {
 
     private static final BigDecimal INITIAL_BALANCE = new BigDecimal("1000");
 
+    /** The existing tests act as the operator; the ownership rule has its own tests below. */
+    private static final CurrentUser ADMIN = new CurrentUser(0, "it-admin", Role.ADMIN);
+
     @Autowired
     private BankingService service;
 
@@ -64,6 +73,9 @@ class BankingServiceMySQLTest {
     void cleanDatabase() {
         jdbcTemplate.update("DELETE FROM transactions");
         jdbcTemplate.update("DELETE FROM accounts");
+        jdbcTemplate.update("DELETE FROM audit_log");
+        jdbcTemplate.update("DELETE FROM account_owners");
+        jdbcTemplate.update("DELETE FROM users");
     }
 
     // BigDecimal("7000") and BigDecimal("7000.00") are NOT equal() (different scale),
@@ -82,37 +94,37 @@ class BankingServiceMySQLTest {
 
     @Test
     void depositIncreasesBalanceAndIsRecorded() throws Exception {
-        service.createAccount("100001", "Juan", new BigDecimal("5000"));
+        createAccount("100001", "Juan", new BigDecimal("5000"));
 
-        Transaction t = service.deposit("100001", new BigDecimal("2000"));
+        Transaction t = deposit("100001", new BigDecimal("2000"));
 
-        assertMoney("7000", service.getAccount("100001").getBalance());
+        assertMoney("7000", getAccount("100001").getBalance());
         assertMoney("7000", t.getBalance());
-        assertEquals(2, service.getTransactionHistory("100001").size()); // opening deposit + deposit
+        assertEquals(2, getTransactionHistory("100001").size()); // opening deposit + deposit
     }
 
     @Test
     void withdrawMoreThanBalanceIsRejectedAndBalanceUnchanged() throws Exception {
-        service.createAccount("100001", "Juan", new BigDecimal("100"));
+        createAccount("100001", "Juan", new BigDecimal("100"));
 
         assertThrows(InsufficientFundsException.class,
-                () -> service.withdraw("100001", new BigDecimal("100.01")));
+                () -> withdraw("100001", new BigDecimal("100.01")));
 
-        assertMoney("100", service.getAccount("100001").getBalance());
-        assertEquals(1, service.getTransactionHistory("100001").size());
+        assertMoney("100", getAccount("100001").getBalance());
+        assertEquals(1, getTransactionHistory("100001").size());
     }
 
     @Test
     void transferMovesMoneyAndIsRecordedOnBothAccounts() throws Exception {
-        service.createAccount("100001", "Juan", new BigDecimal("5500"));
-        service.createAccount("100002", "Pedro", new BigDecimal("8500"));
+        createAccount("100001", "Juan", new BigDecimal("5500"));
+        createAccount("100002", "Pedro", new BigDecimal("8500"));
 
-        Transaction returned = service.transfer("100001", "100002", new BigDecimal("2000"));
+        Transaction returned = transfer("100001", "100002", new BigDecimal("2000"));
 
-        assertMoney("3500", service.getAccount("100001").getBalance());
-        assertMoney("10500", service.getAccount("100002").getBalance());
-        List<Transaction> sourceHistory = service.getTransactionHistory("100001");
-        List<Transaction> destinationHistory = service.getTransactionHistory("100002");
+        assertMoney("3500", getAccount("100001").getBalance());
+        assertMoney("10500", getAccount("100002").getBalance());
+        List<Transaction> sourceHistory = getTransactionHistory("100001");
+        List<Transaction> destinationHistory = getTransactionHistory("100002");
         assertEquals(2, sourceHistory.size());
         assertEquals(2, destinationHistory.size());
 
@@ -125,71 +137,71 @@ class BankingServiceMySQLTest {
     void transferTypeFollowsDirectionNotLockOrder() throws Exception {
         // "100002" -> "100001": the destination is locked first, but the source
         // must still be TRANSFER_OUT and the destination TRANSFER_IN.
-        service.createAccount("100001", "Juan", new BigDecimal("1000"));
-        service.createAccount("100002", "Pedro", new BigDecimal("1000"));
+        createAccount("100001", "Juan", new BigDecimal("1000"));
+        createAccount("100002", "Pedro", new BigDecimal("1000"));
 
-        service.transfer("100002", "100001", new BigDecimal("300"));
+        transfer("100002", "100001", new BigDecimal("300"));
 
-        assertTransferEntry(service.getTransactionHistory("100002").get(1),
+        assertTransferEntry(getTransactionHistory("100002").get(1),
                 TransactionType.TRANSFER_OUT, "100001", "700");
-        assertTransferEntry(service.getTransactionHistory("100001").get(1),
+        assertTransferEntry(getTransactionHistory("100001").get(1),
                 TransactionType.TRANSFER_IN, "100002", "1300");
     }
 
     @Test
     void transferToMissingAccountChangesNothing() throws Exception {
-        service.createAccount("100001", "Juan", new BigDecimal("1000"));
+        createAccount("100001", "Juan", new BigDecimal("1000"));
 
         assertThrows(AccountNotFoundException.class,
-                () -> service.transfer("100001", "999999", new BigDecimal("100")));
+                () -> transfer("100001", "999999", new BigDecimal("100")));
 
-        assertMoney("1000", service.getAccount("100001").getBalance());
-        assertEquals(1, service.getTransactionHistory("100001").size());
+        assertMoney("1000", getAccount("100001").getBalance());
+        assertEquals(1, getTransactionHistory("100001").size());
     }
 
     @Test
     void transferBetweenSameAccountInDifferentCaseIsRejected() throws Exception {
         // MySQL treats "ABC123" and "abc123" as the same row; the service must too.
-        service.createAccount("ABC123", "Juan", new BigDecimal("1000"));
+        createAccount("ABC123", "Juan", new BigDecimal("1000"));
 
         BankingValidationException e = assertThrows(BankingValidationException.class,
-                () -> service.transfer("ABC123", "abc123", new BigDecimal("100")));
+                () -> transfer("ABC123", "abc123", new BigDecimal("100")));
 
         assertEquals("Source and destination accounts must be different.", e.getMessage());
-        assertMoney("1000", service.getAccount("ABC123").getBalance());   // no money created
-        assertEquals(1, service.getTransactionHistory("ABC123").size());  // only the opening deposit
+        assertMoney("1000", getAccount("ABC123").getBalance());   // no money created
+        assertEquals(1, getTransactionHistory("ABC123").size());  // only the opening deposit
     }
 
     @Test
     void duplicateAccountNumberIsRejected() throws Exception {
-        service.createAccount("100001", "Juan", BigDecimal.ZERO);
+        createAccount("100001", "Juan", BigDecimal.ZERO);
 
         assertThrows(AccountAlreadyExistsException.class,
-                () -> service.createAccount("100001", "Someone Else", BigDecimal.TEN));
+                () -> createAccount("100001", "Someone Else", BigDecimal.TEN));
     }
 
     @Test
     void duplicateAccountNumberInDifferentCaseIsRejected() throws Exception {
-        service.createAccount("ABC123", "Juan", BigDecimal.ZERO);
+        createAccount("ABC123", "Juan", BigDecimal.ZERO);
 
         assertThrows(AccountAlreadyExistsException.class,
-                () -> service.createAccount("abc123", "Someone Else", BigDecimal.TEN));
+                () -> createAccount("abc123", "Someone Else", BigDecimal.TEN));
     }
 
     @Test
     void zeroInitialDepositCreatesNoHistory() throws Exception {
-        service.createAccount("100001", "Juan", BigDecimal.ZERO);
-        assertEquals(List.of(), service.getTransactionHistory("100001"));
+        createAccount("100001", "Juan", BigDecimal.ZERO);
+        assertEquals(List.of(), getTransactionHistory("100001"));
     }
 
     @Test
     void accountNameIsTrimmedAndInitialDepositIsRecorded() throws Exception {
-        Account account = service.createAccount("100001", "  Juan Dela Cruz  ", new BigDecimal("500.10"));
+        Account account = createAccount("100001", "  Juan Dela Cruz  ", new BigDecimal("500.10"));
 
         assertEquals("Juan Dela Cruz", account.getAccountName());
         assertMoney("500.10", account.getBalance());
         assertNotNull(account.getCreatedAt());
-        Transaction opening = service.getTransactionHistory("100001").get(0);
+        Transaction opening = getTransactionHistory("100001").get(0);
         assertEquals(TransactionType.DEPOSIT, opening.getTransactionType());
         assertMoney("500.10", opening.getAmount());
         assertTrue(opening.getId() > 0);
@@ -199,12 +211,12 @@ class BankingServiceMySQLTest {
 
     @Test
     void historyIsOldestFirstAndAccountsAreListedByNumber() throws Exception {
-        service.createAccount("100002", "Pedro", new BigDecimal("100"));
-        service.createAccount("100001", "Juan", new BigDecimal("100"));
-        service.deposit("100001", new BigDecimal("10"));
-        service.withdraw("100001", new BigDecimal("5.50"));
+        createAccount("100002", "Pedro", new BigDecimal("100"));
+        createAccount("100001", "Juan", new BigDecimal("100"));
+        deposit("100001", new BigDecimal("10"));
+        withdraw("100001", new BigDecimal("5.50"));
 
-        List<Transaction> history = service.getTransactionHistory("100001");
+        List<Transaction> history = getTransactionHistory("100001");
         assertEquals(List.of(TransactionType.DEPOSIT, TransactionType.DEPOSIT, TransactionType.WITHDRAW),
                 history.stream().map(Transaction::getTransactionType).toList());
 
@@ -217,24 +229,24 @@ class BankingServiceMySQLTest {
     void rejectedOperationRollsBackEveryWrite() throws Exception {
         // The destination cannot hold the new balance. The source has already
         // been debited in memory, so only a rollback keeps it unchanged.
-        service.createAccount("100001", "Juan", new BigDecimal("100"));
-        service.createAccount("100002", "Pedro", new BigDecimal("9999999999999.99"));
+        createAccount("100001", "Juan", new BigDecimal("100"));
+        createAccount("100002", "Pedro", new BigDecimal("9999999999999.99"));
 
         assertThrows(InvalidAmountException.class,
-                () -> service.transfer("100001", "100002", new BigDecimal("0.01")));
+                () -> transfer("100001", "100002", new BigDecimal("0.01")));
 
-        assertMoney("100", service.getAccount("100001").getBalance());
-        assertMoney("9999999999999.99", service.getAccount("100002").getBalance());
-        assertEquals(1, service.getTransactionHistory("100001").size());
-        assertEquals(1, service.getTransactionHistory("100002").size());
+        assertMoney("100", getAccount("100001").getBalance());
+        assertMoney("9999999999999.99", getAccount("100002").getBalance());
+        assertEquals(1, getTransactionHistory("100001").size());
+        assertEquals(1, getTransactionHistory("100002").size());
     }
 
     @Test
     void operationsOnMissingAccountsAreRejected() throws Exception {
-        assertThrows(AccountNotFoundException.class, () -> service.getAccount("999999"));
-        assertThrows(AccountNotFoundException.class, () -> service.deposit("999999", BigDecimal.TEN));
+        assertThrows(AccountNotFoundException.class, () -> getAccount("999999"));
+        assertThrows(AccountNotFoundException.class, () -> deposit("999999", BigDecimal.TEN));
         assertThrows(AccountNotFoundException.class,
-                () -> service.getTransactionHistory("999999"));
+                () -> getTransactionHistory("999999"));
     }
 
     /**
@@ -251,7 +263,7 @@ class BankingServiceMySQLTest {
         int accountCount = 10;
 
         for (int i = 1; i <= accountCount; i++) {
-            service.createAccount(accountNumber(i), "Owner " + i, INITIAL_BALANCE);
+            createAccount(accountNumber(i), "Owner " + i, INITIAL_BALANCE);
         }
         BigDecimal initialTotal = totalMoney(accountCount);
         ConcurrentLinkedQueue<BigDecimal> deposits = new ConcurrentLinkedQueue<>();
@@ -265,7 +277,7 @@ class BankingServiceMySQLTest {
                     for (int op = 0; op < opsPerThread; op++) {
                         if (random.nextBoolean()) {
                             BigDecimal amount = new BigDecimal(1 + random.nextInt(100));
-                            service.deposit(accountNumber(1 + random.nextInt(accountCount)), amount);
+                            deposit(accountNumber(1 + random.nextInt(accountCount)), amount);
                             deposits.add(amount);
                         } else {
                             int from = 1 + random.nextInt(accountCount);
@@ -275,7 +287,7 @@ class BankingServiceMySQLTest {
                             }
                             BigDecimal amount = new BigDecimal(1 + random.nextInt(100));
                             try {
-                                service.transfer(accountNumber(from), accountNumber(to), amount);
+                                transfer(accountNumber(from), accountNumber(to), amount);
                             } catch (BankingException allowed) {
                                 // insufficient funds etc.: a rejected transfer is a valid outcome
                             }
@@ -298,7 +310,7 @@ class BankingServiceMySQLTest {
                 "total money changed: expected " + expectedTotal + " but was " + finalTotal);
 
         for (int i = 1; i <= accountCount; i++) {
-            BigDecimal balance = service.getAccount(accountNumber(i)).getBalance();
+            BigDecimal balance = getAccount(accountNumber(i)).getBalance();
             assertTrue(balance.compareTo(BigDecimal.ZERO) >= 0,
                     accountNumber(i) + " went negative: " + balance);
         }
@@ -311,8 +323,124 @@ class BankingServiceMySQLTest {
     private BigDecimal totalMoney(int accountCount) throws Exception {
         BigDecimal total = BigDecimal.ZERO;
         for (int i = 1; i <= accountCount; i++) {
-            total = total.add(service.getAccount(accountNumber(i)).getBalance());
+            total = total.add(getAccount(accountNumber(i)).getBalance());
         }
         return total;
+    }
+
+    // =====================================================================
+    //  Phase 2: ownership and audit trail
+    // =====================================================================
+
+    @Test
+    void customerCannotOperateOnAnAccountTheyDoNotOwn() throws Exception {
+        createAccount("100001", "Juan", new BigDecimal("1000"));
+        createAccount("100002", "Pedro", new BigDecimal("1000"));
+        CurrentUser carol = registerCustomer("carol");
+
+        assertThrows(AccessDeniedException.class, () -> getAccount(carol, "100001"));
+        assertThrows(AccessDeniedException.class,
+                () -> deposit(carol, "100001", new BigDecimal("50")));
+        assertThrows(AccessDeniedException.class,
+                () -> transfer(carol, "100001", "100002", new BigDecimal("50")));
+
+        // Nothing moved: the denial happens before any balance changes.
+        assertMoney("1000", getAccount("100001").getBalance());
+        assertMoney("1000", getAccount("100002").getBalance());
+    }
+
+    @Test
+    void customerOwnsTheAccountsTheyCreate() throws Exception {
+        CurrentUser carol = registerCustomer("carol");
+        createAccount(carol, "100003", "Carol", new BigDecimal("300"));
+
+        assertMoney("300", getAccount(carol, "100003").getBalance());
+
+        CurrentUser miguel = registerCustomer("miguel");
+        assertThrows(AccessDeniedException.class, () -> getAccount(miguel, "100003"));
+    }
+
+    @Test
+    void auditTrailRecordsWhoMovedMoneyAndDeniedAttempts() throws Exception {
+        createAccount("100001", "Juan", new BigDecimal("1000"));
+        CurrentUser carol = registerCustomerWithAccount("carol", "100001");
+
+        deposit(carol, "100001", new BigDecimal("200"));
+        Integer carolDeposits = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE username = 'carol' AND action = 'DEPOSIT'",
+                Integer.class);
+        assertEquals(1, carolDeposits);
+
+        CurrentUser miguel = registerCustomer("miguel");
+        assertThrows(AccessDeniedException.class, () -> getAccount(miguel, "100001"));
+        Integer denied = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE username = 'miguel' AND action = 'ACCESS_DENIED'",
+                Integer.class);
+        assertEquals(1, denied);
+    }
+
+    // =====================================================================
+    //  Call helpers: the classic tests above run as ADMIN, so they keep their
+    //  original shape; the caller-aware overloads drive the ownership tests.
+    // =====================================================================
+
+    private Account createAccount(String accountNumber, String name, BigDecimal deposit) throws Exception {
+        return service.createAccount(ADMIN, accountNumber, name, deposit);
+    }
+
+    private Account createAccount(CurrentUser caller, String accountNumber, String name,
+                                  BigDecimal deposit) throws Exception {
+        return service.createAccount(caller, accountNumber, name, deposit);
+    }
+
+    private Account getAccount(String accountNumber) throws Exception {
+        return service.getAccount(ADMIN, accountNumber);
+    }
+
+    private Account getAccount(CurrentUser caller, String accountNumber) throws Exception {
+        return service.getAccount(caller, accountNumber);
+    }
+
+    private Transaction deposit(String accountNumber, BigDecimal amount) throws Exception {
+        return service.deposit(ADMIN, accountNumber, amount);
+    }
+
+    private Transaction deposit(CurrentUser caller, String accountNumber, BigDecimal amount) throws Exception {
+        return service.deposit(caller, accountNumber, amount);
+    }
+
+    private Transaction withdraw(String accountNumber, BigDecimal amount) throws Exception {
+        return service.withdraw(ADMIN, accountNumber, amount);
+    }
+
+    private Transaction transfer(String sourceAccount, String destinationAccount,
+                                 BigDecimal amount) throws Exception {
+        return service.transfer(ADMIN, sourceAccount, destinationAccount, amount);
+    }
+
+    private Transaction transfer(CurrentUser caller, String sourceAccount, String destinationAccount,
+                                 BigDecimal amount) throws Exception {
+        return service.transfer(caller, sourceAccount, destinationAccount, amount);
+    }
+
+    private List<Transaction> getTransactionHistory(String accountNumber) throws Exception {
+        return service.getTransactionHistory(ADMIN, accountNumber);
+    }
+
+    /** Inserts a CUSTOMER login directly, bypassing AuthService (which would BCrypt-hash a password). */
+    private CurrentUser registerCustomer(String username) {
+        jdbcTemplate.update(
+                "INSERT INTO users (username, password_hash, role) VALUES (?, 'not-a-real-bcrypt-hash', 'CUSTOMER')",
+                username);
+        Integer id = jdbcTemplate.queryForObject(
+                "SELECT id FROM users WHERE username = ?", Integer.class, username);
+        return new CurrentUser(id, username, Role.CUSTOMER);
+    }
+
+    private CurrentUser registerCustomerWithAccount(String username, String accountNumber) {
+        CurrentUser user = registerCustomer(username);
+        jdbcTemplate.update("INSERT INTO account_owners (user_id, account_number) VALUES (?, ?)",
+                user.id(), accountNumber);
+        return user;
     }
 }

@@ -1,5 +1,6 @@
 package com.tesda.ciicc.banking.backend.web;
 
+import com.tesda.ciicc.banking.backend.auth.CurrentUser;
 import com.tesda.ciicc.banking.backend.exception.BankingException;
 import com.tesda.ciicc.banking.backend.model.Account;
 import com.tesda.ciicc.banking.backend.service.BankingService;
@@ -14,6 +15,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -40,18 +42,21 @@ public class AccountController {
     }
 
     @Operation(summary = "Create an account",
-            description = "A positive initial deposit is recorded as the account's first transaction.")
+            description = "Owned by the calling CUSTOMER (admins create operator accounts with no owner). "
+                    + "A positive initial deposit is recorded as the account's first transaction.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Account created"),
+            @ApiResponse(responseCode = "401", description = "No valid access token"),
             @ApiResponse(responseCode = "409", description = "Account number already exists"),
             @ApiResponse(responseCode = "422", description = "Invalid account number, name, or initial deposit")
     })
     @PostMapping
-    public ResponseEntity<AccountResponse> createAccount(@RequestBody CreateAccountRequest request)
-            throws BankingException {
+    public ResponseEntity<AccountResponse> createAccount(
+            @AuthenticationPrincipal CurrentUser caller,
+            @RequestBody CreateAccountRequest request) throws BankingException {
 
         BigDecimal initialDeposit = Money.parse(request.initialDeposit(), "Initial deposit");
-        Account account = banking.createAccount(
+        Account account = banking.createAccount(caller,
                 request.accountNumber(), request.accountName(), initialDeposit);
         return ResponseEntity
                 .created(URI.create("/api/accounts/" + account.getAccountNumber()))
@@ -61,12 +66,15 @@ public class AccountController {
     @Operation(summary = "Get one account by account number")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Account found"),
+            @ApiResponse(responseCode = "401", description = "No valid access token"),
+            @ApiResponse(responseCode = "403", description = "Caller does not own this account"),
             @ApiResponse(responseCode = "404", description = "Account does not exist"),
             @ApiResponse(responseCode = "422", description = "Invalid account number")
     })
     @GetMapping("/{accountNumber}")
-    public AccountResponse getAccount(@PathVariable String accountNumber) throws BankingException {
-        return AccountResponse.from(banking.getAccount(accountNumber));
+    public AccountResponse getAccount(@AuthenticationPrincipal CurrentUser caller,
+                                      @PathVariable String accountNumber) throws BankingException {
+        return AccountResponse.from(banking.getAccount(caller, accountNumber));
     }
 
     @Operation(summary = "Deposit into an account",
@@ -75,52 +83,61 @@ public class AccountController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Deposit recorded (or replayed)"),
             @ApiResponse(responseCode = "400", description = "Missing or invalid Idempotency-Key"),
+            @ApiResponse(responseCode = "401", description = "No valid access token"),
+            @ApiResponse(responseCode = "403", description = "Caller does not own this account"),
             @ApiResponse(responseCode = "404", description = "Account does not exist"),
             @ApiResponse(responseCode = "409", description = "Idempotency key already used with a different request"),
             @ApiResponse(responseCode = "422", description = "Invalid amount")
     })
     @PostMapping("/{accountNumber}/deposits")
     public TransactionResponse deposit(
+            @AuthenticationPrincipal CurrentUser caller,
             @PathVariable String accountNumber,
             @RequestHeader(IdempotencyService.HEADER_NAME) String idempotencyKey,
             @RequestBody AmountRequest request) throws BankingException {
 
         idempotency.requireValidKey(idempotencyKey);
         BigDecimal amount = Money.parse(request.amount(), "Deposit amount");
-        return idempotency.execute(idempotencyKey, "DEPOSIT", accountNumber, request,
-                TransactionResponse.class,
-                () -> TransactionResponse.from(banking.deposit(accountNumber, amount)));
+        return idempotency.execute(idempotencyKey, "DEPOSIT", idempotencyScope(caller, accountNumber),
+                request, TransactionResponse.class,
+                () -> TransactionResponse.from(banking.deposit(caller, accountNumber, amount)));
     }
     @Operation(summary = "Withdraw from an account",
             description = "Requires an Idempotency-Key header, same replay rules as deposit.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Withdrawal recorded (or replayed)"),
             @ApiResponse(responseCode = "400", description = "Missing or invalid Idempotency-Key"),
+            @ApiResponse(responseCode = "401", description = "No valid access token"),
+            @ApiResponse(responseCode = "403", description = "Caller does not own this account"),
             @ApiResponse(responseCode = "404", description = "Account does not exist"),
             @ApiResponse(responseCode = "409", description = "Idempotency key already used with a different request"),
             @ApiResponse(responseCode = "422", description = "Invalid amount or insufficient funds")
     })
     @PostMapping("/{accountNumber}/withdrawals")
     public TransactionResponse withdraw(
+            @AuthenticationPrincipal CurrentUser caller,
             @PathVariable String accountNumber,
             @RequestHeader(IdempotencyService.HEADER_NAME) String idempotencyKey,
             @RequestBody AmountRequest request) throws BankingException {
 
         idempotency.requireValidKey(idempotencyKey);
         BigDecimal amount = Money.parse(request.amount(), "Withdrawal amount");
-        return idempotency.execute(idempotencyKey, "WITHDRAW", accountNumber, request,
-                TransactionResponse.class,
-                () -> TransactionResponse.from(banking.withdraw(accountNumber, amount)));
+        return idempotency.execute(idempotencyKey, "WITHDRAW", idempotencyScope(caller, accountNumber),
+                request, TransactionResponse.class,
+                () -> TransactionResponse.from(banking.withdraw(caller, accountNumber, amount)));
     }
 
     @Operation(summary = "Transaction history of an account, oldest first")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Page of transactions"),
+            @ApiResponse(responseCode = "401", description = "No valid access token"),
+            @ApiResponse(responseCode = "403", description = "Caller does not own this account"),
             @ApiResponse(responseCode = "404", description = "Account does not exist"),
             @ApiResponse(responseCode = "422", description = "Invalid page or size")
     })
     @GetMapping("/{accountNumber}/transactions")
     public TransactionPageResponse transactionHistory(
+            @AuthenticationPrincipal CurrentUser caller,
             @PathVariable String accountNumber,
 
             @Parameter(description = "Zero-based page number", example = "0")
@@ -129,6 +146,16 @@ public class AccountController {
             @Parameter(description = "Page size, 1 to 100", example = "20")
             @RequestParam(defaultValue = "20") int size) throws BankingException {
 
-        return TransactionPageResponse.from(banking.getTransactionHistoryPage(accountNumber, page, size));
+        return TransactionPageResponse.from(
+                banking.getTransactionHistoryPage(caller, accountNumber, page, size));
+    }
+
+    /**
+     * Idempotency keys are scoped per user: without the caller id in the
+     * hashed scope, customer B replaying customer A's key with an identical
+     * body would receive A's stored response instead of a 403.
+     */
+    private static String idempotencyScope(CurrentUser caller, String accountNumber) {
+        return caller.id() + "|" + accountNumber;
     }
 }

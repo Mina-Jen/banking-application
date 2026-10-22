@@ -1,5 +1,6 @@
 package com.tesda.ciicc.banking.backend.web;
 
+import com.tesda.ciicc.banking.backend.auth.CurrentUser;
 import com.tesda.ciicc.banking.backend.exception.BankingException;
 import com.tesda.ciicc.banking.backend.service.BankingService;
 import com.tesda.ciicc.banking.backend.web.dto.TransactionResponse;
@@ -8,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -31,25 +33,31 @@ public class TransferController {
 
     @Operation(summary = "Transfer money between two accounts",
             description = "Records TRANSFER_OUT on the source and TRANSFER_IN on the destination. "
+                    + "The caller must own the source account; the destination may belong to anyone. "
                     + "Requires an Idempotency-Key header; replaying the same key with the same body "
                     + "returns the stored response without transferring again.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Transfer recorded (or replayed); the response is the source account's TRANSFER_OUT entry"),
             @ApiResponse(responseCode = "400", description = "Missing or invalid Idempotency-Key"),
+            @ApiResponse(responseCode = "401", description = "No valid access token"),
+            @ApiResponse(responseCode = "403", description = "Caller does not own the source account"),
             @ApiResponse(responseCode = "404", description = "Source or destination account does not exist"),
             @ApiResponse(responseCode = "409", description = "Idempotency key already used with a different request"),
             @ApiResponse(responseCode = "422", description = "Invalid amount, same account on both sides, or insufficient funds")
     })
     @PostMapping
     public TransactionResponse transfer(
+            @AuthenticationPrincipal CurrentUser caller,
             @RequestHeader(IdempotencyService.HEADER_NAME) String idempotencyKey,
             @RequestBody TransferRequest request) throws BankingException {
 
         idempotency.requireValidKey(idempotencyKey);
         BigDecimal amount = Money.parse(request.amount(), "Transfer amount");
-        return idempotency.execute(idempotencyKey, "TRANSFER", "", request,
+        // Scope includes the caller id, so two customers can never replay each
+        // other's stored response with the same key and body.
+        return idempotency.execute(idempotencyKey, "TRANSFER", String.valueOf(caller.id()), request,
                 TransactionResponse.class,
-                () -> TransactionResponse.from(banking.transfer(
+                () -> TransactionResponse.from(banking.transfer(caller,
                         request.sourceAccountNumber(), request.destinationAccountNumber(), amount)));
     }
 }

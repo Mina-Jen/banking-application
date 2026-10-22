@@ -13,7 +13,7 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest
+@SpringBootTest(properties = "JWT_SECRET=migration-test-secret-0123456789abcdef")
 @Testcontainers(disabledWithoutDocker = true)
 class DatabaseMigrationTest {
 
@@ -31,7 +31,8 @@ class DatabaseMigrationTest {
         List<String> tables = jdbcTemplate.queryForList("SHOW TABLES", String.class);
 
         assertThat(tables)
-                .contains("accounts", "transactions", "idempotency_keys", "flyway_schema_history");
+                .contains("accounts", "transactions", "idempotency_keys",
+                        "users", "account_owners", "audit_log", "flyway_schema_history");
     }
 
     @Test

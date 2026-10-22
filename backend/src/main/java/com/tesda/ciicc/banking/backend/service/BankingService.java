@@ -1,18 +1,22 @@
 package com.tesda.ciicc.banking.backend.service;
 
+import com.tesda.ciicc.banking.backend.auth.CurrentUser;
 import com.tesda.ciicc.banking.backend.exception.AccountAlreadyExistsException;
 import com.tesda.ciicc.banking.backend.exception.AccountNotFoundException;
 import com.tesda.ciicc.banking.backend.exception.BankingException;
 import com.tesda.ciicc.banking.backend.exception.BankingValidationException;
 import com.tesda.ciicc.banking.backend.exception.InvalidAmountException;
 import com.tesda.ciicc.banking.backend.model.Account;
+import com.tesda.ciicc.banking.backend.model.AccountOwner;
 import com.tesda.ciicc.banking.backend.model.Transaction;
 import com.tesda.ciicc.banking.backend.model.TransactionType;
+import com.tesda.ciicc.banking.backend.repository.AccountOwnerRepository;
 import com.tesda.ciicc.banking.backend.repository.AccountRepository;
 import com.tesda.ciicc.banking.backend.repository.TransactionRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +32,13 @@ import java.util.Optional;
  *
  * <p>The domain exceptions are checked, so mutating methods opt into rollback
  * for every exception; Spring only rolls back runtime exceptions by default.
+ * </p>
+ *
+ * <p>Since Phase 2 every method also receives the authenticated
+ * {@link CurrentUser}: a CUSTOMER may only touch accounts listed in
+ * {@code account_owners}, ADMIN (the operator role) may touch all accounts.
+ * The check lives here in the service layer on purpose, so the rule holds for
+ * every caller, not only for the HTTP controllers.</p>
  */
 @Service
 public class BankingService {
@@ -41,20 +52,30 @@ public class BankingService {
 
     private final AccountRepository accounts;
     private final TransactionRepository transactions;
+    private final AccountOwnerRepository accountOwners;
+    private final AuditService audit;
 
-    public BankingService(AccountRepository accounts, TransactionRepository transactions) {
+    public BankingService(AccountRepository accounts, TransactionRepository transactions,
+                          AccountOwnerRepository accountOwners, AuditService audit) {
         this.accounts = accounts;
         this.transactions = transactions;
+        this.accountOwners = accountOwners;
+        this.audit = audit;
     }
 
     // =====================================================================
     //  Accounts
     // =====================================================================
 
-    /** Creates an account. A positive initial deposit is also recorded as its first transaction. */
+    /**
+     * Creates an account and links it to the caller (a CUSTOMER owns the
+     * accounts they create; an ADMIN creates operator accounts with no owner).
+     * A positive initial deposit is also recorded as the account's first
+     * transaction.
+     */
     @Transactional(rollbackFor = Exception.class)
-    public Account createAccount(String accountNumber, String accountName, BigDecimal initialDeposit)
-            throws BankingException {
+    public Account createAccount(CurrentUser caller, String accountNumber, String accountName,
+                                 BigDecimal initialDeposit) throws BankingException {
 
         requireAccountNumber(accountNumber);
         String name = requireAccountName(accountName);
@@ -76,6 +97,13 @@ public class BankingService {
             throw new AccountAlreadyExistsException("Account number " + accountNumber + " already exists.");
         }
 
+        if (!caller.isAdmin()) {
+            // The account row was flushed above, so this foreign key resolves.
+            accountOwners.save(new AccountOwner(caller.id(), accountNumber));
+        }
+        audit.record(caller.username(), AuditService.ACCOUNT_CREATED, accountNumber,
+                "Created by " + caller.username() + " (" + caller.role() + ")");
+
         if (initialDeposit.signum() > 0) {
             recordTransaction(accountNumber, TransactionType.DEPOSIT,
                     initialDeposit, initialDeposit, null);
@@ -86,9 +114,11 @@ public class BankingService {
     }
 
     @Transactional(readOnly = true)
-    public Account getAccount(String accountNumber) throws BankingException {
+    public Account getAccount(CurrentUser caller, String accountNumber) throws BankingException {
         requireAccountNumber(accountNumber);
-        return findAccount(accountNumber);
+        Account account = findAccount(accountNumber);
+        requireAccess(caller, accountNumber);
+        return account;
     }
 
     @Transactional(readOnly = true)
@@ -101,37 +131,51 @@ public class BankingService {
     // =====================================================================
 
     @Transactional(rollbackFor = Exception.class)
-    public Transaction deposit(String accountNumber, BigDecimal amount) throws BankingException {
+    public Transaction deposit(CurrentUser caller, String accountNumber, BigDecimal amount)
+            throws BankingException {
         requireAccountNumber(accountNumber);
         requirePositiveMoney(amount, "Deposit amount");
 
         Account account = findAccountForUpdate(accountNumber);
+        requireAccess(caller, accountNumber);
         account.deposit(amount);
         requireStorableBalance(account.getBalance());
-        return recordTransaction(accountNumber, TransactionType.DEPOSIT,
+        Transaction transaction = recordTransaction(accountNumber, TransactionType.DEPOSIT,
                 amount, account.getBalance(), null);
+        audit.record(caller.username(), AuditService.DEPOSIT, accountNumber,
+                "Deposited " + amount.toPlainString() + "; new balance "
+                        + account.getBalance().toPlainString());
+        return transaction;
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public Transaction withdraw(String accountNumber, BigDecimal amount) throws BankingException {
+    public Transaction withdraw(CurrentUser caller, String accountNumber, BigDecimal amount)
+            throws BankingException {
         requireAccountNumber(accountNumber);
         requirePositiveMoney(amount, "Withdrawal amount");
 
         Account account = findAccountForUpdate(accountNumber);
+        requireAccess(caller, accountNumber);
         account.withdraw(amount);
-        return recordTransaction(accountNumber, TransactionType.WITHDRAW,
+        Transaction transaction = recordTransaction(accountNumber, TransactionType.WITHDRAW,
                 amount, account.getBalance(), null);
+        audit.record(caller.username(), AuditService.WITHDRAW, accountNumber,
+                "Withdrew " + amount.toPlainString() + "; new balance "
+                        + account.getBalance().toPlainString());
+        return transaction;
     }
 
     /**
      * Moves money between two accounts as one database transaction and records
      * it on both accounts, so each account's history explains its own balance.
+     * The caller must own the SOURCE account; the destination may belong to
+     * anyone, exactly like depositing into a friend's account at a real bank.
      *
      * @return the transaction record of the source account
      */
     @Transactional(rollbackFor = Exception.class)
-    public Transaction transfer(String sourceAccount, String destinationAccount, BigDecimal amount)
-            throws BankingException {
+    public Transaction transfer(CurrentUser caller, String sourceAccount, String destinationAccount,
+                                BigDecimal amount) throws BankingException {
 
         requireAccountNumber(sourceAccount);
         requireAccountNumber(destinationAccount);
@@ -162,6 +206,8 @@ public class BankingService {
             throw sameAccountError();
         }
 
+        requireAccess(caller, sourceAccount);
+
         source.withdraw(amount);
         destination.deposit(amount);
         requireStorableBalance(destination.getBalance());
@@ -170,6 +216,9 @@ public class BankingService {
                 amount, source.getBalance(), destinationAccount);
         recordTransaction(destinationAccount, TransactionType.TRANSFER_IN,
                 amount, destination.getBalance(), sourceAccount);
+        audit.record(caller.username(), AuditService.TRANSFER, sourceAccount,
+                "Transferred " + amount.toPlainString() + " to " + destinationAccount
+                        + "; new balance " + source.getBalance().toPlainString());
         return sourceEntry;
     }
 
@@ -178,9 +227,11 @@ public class BankingService {
     // =====================================================================
 
     @Transactional(readOnly = true)
-    public List<Transaction> getTransactionHistory(String accountNumber) throws BankingException {
+    public List<Transaction> getTransactionHistory(CurrentUser caller, String accountNumber)
+            throws BankingException {
         requireAccountNumber(accountNumber);
         findAccount(accountNumber);   // fails with "does not exist" for unknown accounts
+        requireAccess(caller, accountNumber);
         return transactions.findByAccountNumberOrderByIdAsc(accountNumber);
     }
 
@@ -190,11 +241,12 @@ public class BankingService {
      * {@value #MAX_PAGE_SIZE}.
      */
     @Transactional(readOnly = true)
-    public Page<Transaction> getTransactionHistoryPage(String accountNumber, int page, int size)
-            throws BankingException {
+    public Page<Transaction> getTransactionHistoryPage(CurrentUser caller, String accountNumber,
+                                                       int page, int size) throws BankingException {
 
         requireAccountNumber(accountNumber);
         findAccount(accountNumber);   // fails with "does not exist" for unknown accounts
+        requireAccess(caller, accountNumber);
         if (page < 0) {
             throw new BankingValidationException("Page must be zero or greater.");
         }
@@ -202,6 +254,28 @@ public class BankingService {
             throw new BankingValidationException("Page size must be between 1 and " + MAX_PAGE_SIZE + ".");
         }
         return transactions.findByAccountNumberOrderByIdAsc(accountNumber, PageRequest.of(page, size));
+    }
+
+    // =====================================================================
+    //  Ownership (Phase 2)
+    // =====================================================================
+
+    /**
+     * Phase 2 rule: a CUSTOMER may only touch accounts listed in
+     * {@code account_owners}; ADMIN is the operator role and passes. The
+     * denial is audited first, in its own transaction (see
+     * {@link AuditService#recordDeniedAccess}): the thrown exception makes
+     * this transaction roll back, and the denial is exactly what must stay
+     * visible in the audit trail.
+     */
+    private void requireAccess(CurrentUser caller, String accountNumber) {
+        if (caller.isAdmin()) {
+            return;
+        }
+        if (!accountOwners.existsByUserIdAndAccountNumber(caller.id(), accountNumber)) {
+            audit.recordDeniedAccess(caller, accountNumber);
+            throw new AccessDeniedException("You are not allowed to access account " + accountNumber + ".");
+        }
     }
 
     // =====================================================================
