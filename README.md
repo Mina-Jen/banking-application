@@ -97,7 +97,7 @@ banking-application/
     │   ├── exception/           BankingException and its subclasses
     │   └── util/                ConnectionProvider, DatabaseConnection
     └── test/
-        ├── java/com/tesda/ciicc/banking/   Validation and H2 integration tests
+        ├── java/com/tesda/ciicc/banking/   Unit, Validation and H2 integration tests
         └── resources/schema-h2.sql         Test-only database schema
 ```
 
