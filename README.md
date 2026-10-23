@@ -34,6 +34,9 @@ runnable.
 - openapi-typescript + openapi-fetch (frontend API client, generated)
 - Vitest, Testing Library, jsdom (frontend unit and component tests)
 - Playwright (browser end-to-end tests against the real backend)
+- Docker / docker compose, nginx (containerised stack, Phase 5)
+- GitHub Actions (CI: build, test, lint, image build and GHCR publish)
+- Checkstyle (Java) and ESLint (TypeScript) style gates
 - IntelliJ IDEA
 
 ## Project Structure
@@ -41,9 +44,14 @@ runnable.
 ```
 banking-application/
 ├── pom.xml                      Console app Maven build
+├── docker-compose.yml           Whole stack in one command: MySQL + backend + frontend
+├── .env.example                 Secrets compose reads; copy to .env (git-ignored, never committed)
+├── .github/workflows/ci.yml     CI: build, test (Testcontainers), lint, Docker build + GHCR publish
 ├── backend/                     Spring Boot 3 backend
 │   ├── pom.xml                  Backend Maven build
 │   ├── mvnw / mvnw.cmd          Maven wrapper
+│   ├── Dockerfile               Multi-stage: Maven build -> JRE 17 runtime as non-root user
+│   ├── checkstyle.xml           Java style gate run by CI (./mvnw checkstyle:check)
 │   └── src/
 │       ├── main/java/com/tesda/ciicc/banking/backend/
 │       │   ├── BankingBackendApplication.java
@@ -61,6 +69,9 @@ banking-application/
 │       └── test/resources/      assistant-golden.json — the 50-question assistant eval set
 ├── frontend/                    React + TypeScript SPA (Phase 3)
 │   ├── package.json             Frontend npm build
+│   ├── Dockerfile               Multi-stage: Vite build -> nginx serving dist + /api proxy
+│   ├── nginx.conf               Container config: SPA fallback, static caching, proxy to backend
+│   ├── eslint.config.js         TypeScript/React lint gate run by CI (npm run lint)
 │   ├── vite.config.ts           Dev server, Tailwind plugin, /api proxy, Vitest config
 │   ├── playwright.config.ts     E2E run: starts its own backend (18081) and dev server (5273)
 │   ├── openapi.json             Exported backend spec — the source of truth for codegen
@@ -923,6 +934,232 @@ Set `CI=1` to disable `reuseExistingServer` and the local reuse behaviour.
 
 If MariaDB/MySQL is not running, or `JWT_SECRET` is missing, the backend web
 server fails to start and Playwright reports that instead of a test failure.
+
+## Docker, CI and Deploy (Phase 5)
+
+Everything below runs the same code as the manual setup above; it just removes
+the XAMPP dependency. Nothing here replaces `mvn test` or `npm test` — Docker is
+a packaging and CI concern, and the tests still run against H2 locally and
+against real MySQL through Testcontainers in CI.
+
+### One command for the whole stack
+
+```bash
+cp .env.example .env        # then edit .env: three values are mandatory
+docker compose up --build
+```
+
+`.env` holds the secrets and is git-ignored; only `.env.example` is committed.
+Generate the signing key with `openssl rand -base64 48` — the backend refuses to
+start without a `JWT_SECRET` of at least 32 characters, and compose refuses to
+start without `MYSQL_ROOT_PASSWORD`, `BANKING_DB_PASSWORD` and `JWT_SECRET` (the
+`${VAR:?message}` syntax fails with that message instead of launching a
+half-configured stack).
+
+Then:
+
+| URL | What answers there |
+| --- | --- |
+| <http://localhost:3000> | the React app, served by nginx |
+| <http://localhost:18080/api/...> | the Spring Boot API |
+| <http://localhost:18080/swagger-ui.html> | the OpenAPI browser |
+| <http://localhost:18080/actuator/health> | the health probe the containers poll |
+| `localhost:33060` | MySQL, for a database client (not published inside the stack) |
+
+Useful follow-ups: `docker compose logs -f backend`, `docker compose ps` (each
+service reports `healthy` once its healthcheck passes), `docker compose down`
+(stop, keep data), `docker compose down -v` (stop and delete the database
+volume).
+
+### What starts in which order
+
+`docker compose up` starts the three services declared in `docker-compose.yml`:
+
+1. **db** — `mysql:8.4` with an empty database named `banking_db` and a named
+   volume (`db-data`), so balances survive a restart. Its healthcheck runs
+   `mysqladmin ping`.
+2. **backend** — starts only after the database is *healthy*
+   (`depends_on.db.condition: service_healthy`), so Flyway never races an empty
+   data directory. Flyway sees a schema with no tables and no history, so it
+   applies `V1__init` through `V7__transaction_description` from scratch. The
+   `baseline-on-migrate` setting in `application.yml` only kicks in for a
+   pre-existing XAMPP database, which is why the same image works for both.
+3. **frontend** — nginx serving the built bundle.
+
+Two details that are easy to get wrong and are already handled:
+
+- **MySQL 8 passwords.** The default auth plugin is `caching_sha2_password` and
+  the connection inside the compose network is not TLS, so the JDBC URL carries
+  `useSSL=false&allowPublicKeyRetrieval=true`. Without those parameters the
+  backend dies at startup with "Public Key Retrieval is not allowed".
+- **Ports.** The backend's container port is the Spring default 8080; only the
+  *host* side is 18080, because 8080 is busy on most dev machines. The host port
+  for MySQL is 33060 for the same reason (XAMPP owns 3306).
+
+### Why the frontend proxies instead of using CORS
+
+`frontend/nginx.conf` forwards `/api/` to `http://backend:8080` inside the
+compose network. The browser therefore only ever talks to one origin —
+`http://localhost:3000` — exactly like the Vite dev proxy, so no CORS
+configuration and no preflight requests are needed, and the JWT never crosses a
+host boundary. The same file serves `index.html` for unknown paths, which
+React Router needs for client-side routes, and caches the fingerprinted
+`/assets/` files for a year while marking `index.html` `no-cache` so a new
+deploy is visible immediately.
+
+### Images
+
+Each image is built in two stages: a build stage with the toolchain (Maven, Node)
+and a runtime stage containing only what is needed to run (a JRE, or nginx). The
+backend runs as a non-root user with no compiler on the filesystem, and the only
+thing copied out of the build stage is the jar / the `dist/` folder.
+
+- `backend/Dockerfile` — `maven:3.9-eclipse-temurin-17` → `eclipse-temurin:17-jre`.
+  Tests are skipped during the image build on purpose; CI runs them separately,
+  and Testcontainers needs a Docker daemon that does not exist inside a build.
+- `frontend/Dockerfile` — `node:24-alpine` (`npm ci`, `npm run build`) →
+  `nginx:1.28-alpine`.
+
+Both use BuildKit cache mounts (`--mount=type=cache`), so rebuilding after a
+source change does not re-download every dependency. BuildKit is the default on
+Docker 23+; on older installs prefix the command with `DOCKER_BUILDKIT=1`.
+
+### Lint
+
+Two style gates, both deliberately narrow — they flag defects, not formatting
+taste, and neither is wired into the normal build/test commands:
+
+```bash
+cd backend  && ./mvnw -B checkstyle:check   # rules in backend/checkstyle.xml
+cd frontend && npm run lint                 # rules in frontend/eslint.config.js
+```
+
+Checkstyle covers unused/redundant/star imports, brace-less single statements,
+`==` on strings, `equals` without `hashCode`, modifier order and the standard
+Java naming conventions; `log` is explicitly allowed as a lowercase `static
+final` because that is the SLF4J convention. ESLint adds what `tsc -b` and
+Vitest cannot see: React hook dependency bugs (`react-hooks` rules), dead code,
+accidental globals and `any`. Line length and import ordering are not enforced
+anywhere, on purpose: the existing code would need churn for no behaviour change.
+
+### GitHub Actions
+
+`.github/workflows/ci.yml` runs on every push to `main`, every pull request, and
+on demand. Four jobs, with the image build gated behind the other three so no
+image is ever published from red code:
+
+| Job | What it proves |
+| --- | --- |
+| `backend` | `./mvnw -B test` — the full suite, then packages the jar as a build artifact |
+| `frontend` | `npm ci`, `npm run build` (which is `tsc -b && vite build`), `npm test` |
+| `lint` | Checkstyle over the backend, ESLint over the frontend |
+| `docker` | both images build; on `main` they are pushed to GHCR |
+
+The `backend` job is where the Testcontainers tests actually run:
+`BankingServiceMySQLTest` and `DatabaseMigrationTest` are annotated
+`@Testcontainers(disabledWithoutDocker = true)`, so on a laptop without Docker
+they are skipped (that is the 26 skipped tests in a local `mvn test`), while the
+GitHub runner has a Docker daemon and executes them against a real `mysql:8.4`
+container. The same job also runs `AssistantGoldenEvalTest`, the 50-question
+assistant eval, which needs no API key because the model is scripted.
+
+Playwright e2e is **not** in CI yet: it expects a MariaDB/MySQL it can reach and
+installs its own browser, so it stays a local command (`npm run e2e`) until a
+service container is added for it.
+
+### Publish and pull (GHCR)
+
+On a push to `main`, the `docker` job logs in with the built-in `GITHUB_TOKEN`
+(`packages: write` permission) and pushes:
+
+```
+ghcr.io/<owner>/<repo>/banking-backend:latest
+ghcr.io/<owner>/<repo>/banking-backend:sha-<short-sha>
+ghcr.io/<owner>/<repo>/banking-frontend:latest
+ghcr.io/<owner>/<repo>/banking-frontend:sha-<short-sha>
+```
+
+Pull requests still build both images to prove the Dockerfiles work, but never
+push — a fork's token cannot write to this package anyway. First push to GHCR
+creates the package as *private*, so pull it with an authenticated
+`docker login ghcr.io` (a personal access token with the `read:packages` scope,
+or your GitHub account for an org-owned package).
+
+Because `docker-compose.yml` takes the image names from variables, the same file
+runs either from source or from the registry:
+
+```bash
+# build locally and tag as banking-backend:local / banking-frontend:local
+docker compose up --build
+
+# or start the published images instead, with no build step
+export BACKEND_IMAGE=ghcr.io/<owner>/<repo>/banking-backend:latest
+export FRONTEND_IMAGE=ghcr.io/<owner>/<repo>/banking-frontend:latest
+docker compose pull
+docker compose up --no-build
+```
+
+What CI does *not* do is deploy: there is no server, environment or SSH target
+configured, so pushing an image is the end of the pipeline. Attaching a host
+later means adding one job that runs `docker compose up -d` over SSH with the
+secrets stored in GitHub Actions, not changing these files.
+
+### Verified on this machine
+
+The whole stack has been built and run locally, with Colima as the Docker daemon
+(Docker Desktop would not install without `sudo`, so the daemon is Colima plus
+the `docker compose` and `docker buildx` plugins).
+
+`docker compose up --build` starts all three services and every container reports
+`healthy`: Flyway applies V1–V7 to a fresh `db-data` volume, `/actuator/health`
+returns `UP`, the SPA and a deep link both serve 200 through nginx, the `/api`
+proxy reaches the backend and returns the canonical error JSON, and register →
+login → open account → deposit all work, including the cross-user ownership rule
+returning 404 rather than leaking another customer's account.
+
+Idempotency replay is verified over real HTTP against MySQL: the first deposit
+returns 200 and `balanceAfter` 125.00, a retry with the same `Idempotency-Key`
+and the same body returns 200 with the byte-identical stored response and does
+**not** run the deposit again (balance stays 125.00), and the same key with a
+different body returns 409.
+
+Tests and lint in the same run: `./mvnw -B test` → 300 tests, 0 failures, 0
+errors, **0 skipped** (the 28 Testcontainers MySQL tests execute because Docker
+is present), `./mvnw -B checkstyle:check` → 0 violations, `npm run lint` → 0
+errors, `npm run build`, `npm test` → 196 tests.
+
+Running the Testcontainers tests against Colima needs two environment variables
+that are specific to this machine's socket and are not needed in CI:
+
+```bash
+export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock
+export TESTCONTAINERS_RYUK_DISABLED=true   # Ryuk's container cannot start under Colima
+```
+
+### Defects the real MySQL run exposed (and fixed)
+
+Both were invisible to the H2 and MariaDB test paths, which is the argument for
+running this stack rather than only unit tests.
+
+1. **500 on every idempotent retry.** `IdempotencyService.replay` was annotated
+   `@Transactional(readOnly = true)`, but its lookup is a locking read
+   (`SELECT ... FOR UPDATE`), and MySQL rejects a locking read in a read-only
+   transaction with `ERROR 1792: Cannot execute statement in a READ ONLY
+   transaction`. H2 and MariaDB allow it. The annotation is now plain
+   `@Transactional`, and `IdempotencyReplayMySQLTest` is the regression test that
+   can only fail on a real MySQL.
+2. **16 errors in `BankingServiceMySQLTest`.** Its `@BeforeEach` cleanup deleted
+   tables in an order that violated the foreign keys
+   (`anomaly_flags` → `transactions` → `accounts`, and `account_owners` → both
+   `accounts` and `users`). Cleanup now runs in strict reverse-dependency order.
+   CI would have been red on the first real run without this.
+
+### Not verified
+
+Pushing the images to GHCR and the CI run itself: that needs a commit and a push
+to GitHub, so the `docker` job, the `metadata-action` tags, and the
+`packages: write` permission are still unproven. There is no server or other
+deployment target, so nothing after the push exists to verify.
 
 ## Console Application (Phase 0)
 

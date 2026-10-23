@@ -1,0 +1,203 @@
+name: CI
+
+# Four gates for every change: the backend builds and its tests run against a
+# real MySQL through Testcontainers, the frontend builds and its tests run, both
+# codebases pass their linters, and both container images build (and publish to
+# GHCR on main).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch replaces the run in progress instead of queueing
+# a second full pipeline.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend - build and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      # The whole suite. ubuntu-latest ships a Docker daemon, so the
+      # Testcontainers classes (BankingServiceMySQLTest, DatabaseMigrationTest)
+      # really run here instead of being skipped with
+      # @Testcontainers(disabledWithoutDocker = true). It also includes
+      # AssistantGoldenEvalTest: the 50-question golden set replayed through the
+      # real tools against H2 with a scripted model, so no API key is needed.
+      - name: Run tests
+        run: ./mvnw -B test
+
+      - name: Package the runnable jar
+        run: ./mvnw -B -DskipTests package
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: banking-backend-jar
+          path: backend/target/*.jar
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: backend/target/surefire-reports/
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend - build and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Must match the node:24-alpine build stage of frontend/Dockerfile, so a
+      # dependency that resolves in CI also resolves in the image.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci (not npm install): the lockfile is the source of truth, and a
+      # drift in package.json should fail the build rather than be patched over.
+      - name: Install dependencies
+        run: npm ci
+
+      # tsc -b && vite build -- type check, then bundle.
+      - name: Build
+        run: npm run build
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: banking-frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
+
+  lint:
+    name: Lint - Checkstyle and ESLint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Backend Checkstyle
+        working-directory: backend
+        run: ./mvnw -B checkstyle:check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # --max-warnings=1 admits the one accepted warning (AuthContext.tsx
+      # exports a hook next to its provider, which react-refresh cannot
+      # hot-swap) while refusing to let new warnings pile up unnoticed.
+      # Tighten this to --max-warnings=0 after that file is split.
+      - name: Frontend ESLint
+        working-directory: frontend
+        run: npm run lint -- --max-warnings=1
+
+  docker:
+    name: Docker build - publish to GHCR on main
+    # Only after the code is green: an image of a broken build is worthless.
+    needs: [backend, frontend, lint]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        # Push only on main; on a pull request the images are still built, just
+        # not published (a fork's token cannot write to this package anyway).
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Backend image metadata
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ toLower(github.repository) }}/banking-backend
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Frontend image metadata
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ toLower(github.repository) }}/banking-frontend
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend

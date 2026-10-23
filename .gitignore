@@ -35,3 +35,8 @@ bin/
 ### Project-specific ###
 .idea/
 *.iml
+
+# docker compose reads secrets from here; only .env.example belongs in git.
+.env
+.env.*
+!.env.example

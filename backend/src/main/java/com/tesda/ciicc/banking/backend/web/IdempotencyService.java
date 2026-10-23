@@ -112,7 +112,12 @@ public class IdempotencyService {
         return result;
     }
 
-    @Transactional(readOnly = true)
+    // NOT readOnly, even though it only reads: the lookup below is a locking
+    // read (SELECT ... FOR UPDATE), and MySQL rejects a locking read inside a
+    // read-only transaction with "Cannot execute statement in a READ ONLY
+    // transaction". H2 and MariaDB allow it, so only a real MySQL run catches
+    // this — see IdempotencyReplayMySQLTest.
+    @Transactional
     public <T> T replay(String idempotencyKey, String requestHash, Class<T> responseType) {
         // Locking read: blocks while the request that owns the key is still
         // committing, and reads the latest committed row rather than an older

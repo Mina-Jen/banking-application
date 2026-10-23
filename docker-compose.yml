@@ -1,0 +1,86 @@
+name: banking
+
+# Whole stack: MySQL + Spring Boot backend + nginx-served React frontend.
+#   cp .env.example .env   then fill in the three required secrets
+#   docker compose up --build
+# Frontend on http://localhost:3000, API on http://localhost:18080.
+#
+# BuildKit is required (the Dockerfiles use cache mounts). It is the default on
+# Docker 23+ and in GitHub Actions; on older Docker prefix commands with
+# DOCKER_BUILDKIT=1.
+
+services:
+  db:
+    image: mysql:8.4
+    # Same collation the Flyway migrations request, so a fresh volume behaves
+    # like the local XAMPP database.
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-banking_db}
+      MYSQL_USER: ${BANKING_DB_USER:-banking}
+      MYSQL_PASSWORD: ${BANKING_DB_PASSWORD:?Set BANKING_DB_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/mysql
+    # 33060 on the host, not 3306: XAMPP already owns 3306 on a dev machine.
+    # Remove this mapping entirely if nothing outside the stack needs the DB.
+    ports:
+      - "${MYSQL_HOST_PORT:-33060}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    # Overridable so the same file can run a published GHCR image:
+    #   BACKEND_IMAGE=ghcr.io/<owner>/<repo>/banking-backend:latest \
+    #   docker compose up --no-build
+    image: ${BACKEND_IMAGE:-banking-backend:local}
+    # Start only once MySQL answers, so Flyway does not race an empty datadir.
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # MySQL 8 defaults to caching_sha2_password and this connection is not
+      # TLS, so the driver must be allowed to fetch the server's public key;
+      # without these two parameters the backend dies at startup with
+      # "Public Key Retrieval is not allowed".
+      # createDatabaseIfNotExist is deliberately NOT set here: the db service
+      # already creates the schema, and the app user has no server-level CREATE
+      # privilege, so asking the driver to create it would fail.
+      BANKING_DB_URL: "jdbc:mysql://db:3306/${MYSQL_DATABASE:-banking_db}?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8"
+      BANKING_DB_USER: ${BANKING_DB_USER:-banking}
+      BANKING_DB_PASSWORD: ${BANKING_DB_PASSWORD:?Set BANKING_DB_PASSWORD in .env}
+      # No default on purpose: the app refuses to start without a signing key,
+      # and it must never be baked into an image.
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (openssl rand -base64 48)}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Default repeated here on purpose: an empty CLAUDE_MODEL in .env would
+      # otherwise reach Spring as an empty string and override the working
+      # default in application.yml.
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-haiku-4-5}
+    ports:
+      - "${BACKEND_HOST_PORT:-18080}:8080"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    image: ${FRONTEND_IMAGE:-banking-frontend:local}
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_HOST_PORT:-3000}:80"
+    restart: unless-stopped
+
+volumes:
+  db-data:
