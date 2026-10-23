@@ -150,6 +150,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Normalise the repository name for GHCR
+        id: slug
+        # GHCR requires lowercase image names and this repo's owner is mixed case,
+        # but GitHub expressions have no toLower(). tr is used rather than bash's
+        # ${VAR,,} because the latter needs bash 4+ and fails as a bad substitution.
+        run: echo "name=$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
@@ -166,7 +173,7 @@ jobs:
         id: meta-backend
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ toLower(github.repository) }}/banking-backend
+          images: ghcr.io/${{ steps.slug.outputs.name }}/banking-backend
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
@@ -186,7 +193,7 @@ jobs:
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ toLower(github.repository) }}/banking-frontend
+          images: ghcr.io/${{ steps.slug.outputs.name }}/banking-frontend
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
