@@ -2,11 +2,8 @@ package com.tesda.ciicc.banking.backend.web.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Request body for creating an account")
+@Schema(description = "Request body for opening an account. There is no account number: the bank assigns it.")
 public record CreateAccountRequest(
-
-        @Schema(description = "Unique account number, at most 20 characters", example = "100001")
-        String accountNumber,
 
         @Schema(description = "Account holder name, at most 100 characters", example = "Juan Dela Cruz")
         String accountName,

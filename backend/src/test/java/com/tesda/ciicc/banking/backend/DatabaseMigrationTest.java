@@ -32,7 +32,69 @@ class DatabaseMigrationTest {
 
         assertThat(tables)
                 .contains("accounts", "transactions", "idempotency_keys",
-                        "users", "account_owners", "audit_log", "flyway_schema_history");
+                        "users", "account_owners", "audit_log", "anomaly_flags",
+                        "flyway_schema_history");
+    }
+
+    @Test
+    void anomalyFlagsCarryTheRuleDetailsAndReviewColumns() {
+        var column = jdbcTemplate.queryForMap("""
+                SELECT IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'anomaly_flags'
+                  AND COLUMN_NAME = 'details'
+                """);
+
+        assertThat(column)
+                .containsEntry("IS_NULLABLE", "NO")
+                .containsEntry("DATA_TYPE", "varchar")
+                .containsEntry("CHARACTER_MAXIMUM_LENGTH", 500L);
+    }
+
+    @Test
+    void aTransactionCanOnlyBeFlaggedOncePerRule() {
+        List<String> uniqueIndexes = jdbcTemplate.queryForList("""
+                SELECT INDEX_NAME
+                FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'anomaly_flags'
+                  AND NON_UNIQUE = 0
+                """, String.class);
+
+        assertThat(uniqueIndexes).contains("uq_anomaly_flags_transaction_rule");
+    }
+
+    @Test
+    void transactionsCarryANullableCategoryColumn() {
+        var column = jdbcTemplate.queryForMap("""
+                SELECT IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'transactions'
+                  AND COLUMN_NAME = 'category'
+                """);
+
+        assertThat(column)
+                .containsEntry("IS_NULLABLE", "YES")
+                .containsEntry("DATA_TYPE", "varchar")
+                .containsEntry("CHARACTER_MAXIMUM_LENGTH", 40L);
+    }
+
+    @Test
+    void transactionsCarryANullableDescriptionColumn() {
+        var column = jdbcTemplate.queryForMap("""
+                SELECT IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'transactions'
+                  AND COLUMN_NAME = 'description'
+                """);
+
+        assertThat(column)
+                .containsEntry("IS_NULLABLE", "YES")
+                .containsEntry("DATA_TYPE", "varchar")
+                .containsEntry("CHARACTER_MAXIMUM_LENGTH", 255L);
     }
 
     @Test

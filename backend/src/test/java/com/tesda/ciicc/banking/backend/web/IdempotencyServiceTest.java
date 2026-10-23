@@ -44,7 +44,7 @@ class IdempotencyServiceTest {
 
     private static TransactionResponse depositResponse(String amountValue) {
         return new TransactionResponse(1, "TXN-test", "100001", "DEPOSIT",
-                amountValue, "5010.00", null, "2026-10-21T17:05:00Z");
+                amountValue, "5010.00", null, null, "2026-10-21T17:05:00Z", null);
     }
 
     private void claimSucceeds() {

@@ -28,8 +28,16 @@ public record TransactionResponse(
         @Schema(description = "Other account of a transfer, absent for deposit and withdraw", example = "100002")
         String referenceAccount,
 
+        @Schema(description = "Customer-supplied note, absent when the movement had none",
+                example = "SM supermarket")
+        String description,
+
         @Schema(description = "When the transaction was recorded, ISO-8601", example = "2026-10-21T17:05:00Z")
-        String createdAt) {
+        String createdAt,
+
+        @Schema(description = "Accepted category, absent until someone categorizes the transaction",
+                example = "GROCERIES")
+        String category) {
 
     public static TransactionResponse from(Transaction transaction) {
         return new TransactionResponse(
@@ -40,6 +48,8 @@ public record TransactionResponse(
                 Money.format(transaction.getAmount()),
                 Money.format(transaction.getBalance()),
                 transaction.getReferenceAccount(),
-                transaction.getCreatedAt().toInstant().toString());
+                transaction.getDescription(),
+                transaction.getCreatedAt().toInstant().toString(),
+                transaction.getCategory() == null ? null : transaction.getCategory().name());
     }
 }

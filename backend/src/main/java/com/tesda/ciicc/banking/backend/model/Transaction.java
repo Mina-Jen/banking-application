@@ -45,6 +45,15 @@ public class Transaction {
     @Column(name = "reference_account", length = 20)
     private String referenceAccount;    // other account in a transfer, else null
 
+    // Customer-supplied free text. It is untrusted data: never instructions
+    // for a model, and never part of an account lookup.
+    @Column(name = "description", length = 255)
+    private String description;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", length = 40)
+    private TransactionCategory category;   // null until suggested and accepted
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Timestamp createdAt;
@@ -72,6 +81,12 @@ public class Transaction {
 
     public String getReferenceAccount() { return referenceAccount; }
     public void setReferenceAccount(String referenceAccount) { this.referenceAccount = referenceAccount; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+
+    public TransactionCategory getCategory() { return category; }
+    public void setCategory(TransactionCategory category) { this.category = category; }
 
     public Timestamp getCreatedAt() { return createdAt; }
     public void setCreatedAt(Timestamp createdAt) { this.createdAt = createdAt; }

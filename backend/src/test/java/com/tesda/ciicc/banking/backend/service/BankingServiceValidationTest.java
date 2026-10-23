@@ -1,5 +1,6 @@
 package com.tesda.ciicc.banking.backend.service;
 
+import com.tesda.ciicc.banking.backend.ai.CategorySuggestionClient;
 import com.tesda.ciicc.banking.backend.auth.CurrentUser;
 import com.tesda.ciicc.banking.backend.model.Role;
 import com.tesda.ciicc.banking.backend.exception.BankingValidationException;
@@ -41,7 +42,8 @@ class BankingServiceValidationTest {
                 .thenThrow(new IllegalStateException("stub database"));
         when(accountOwners.existsByUserIdAndAccountNumber(anyInt(), anyString()))
                 .thenThrow(new IllegalStateException("stub database"));
-        return new BankingService(accounts, transactions, accountOwners, audit);
+        return new BankingService(accounts, transactions, accountOwners, audit,
+                mock(CategorySuggestionClient.class), mock(AnomalyService.class));
     }
 
     @Test
@@ -100,6 +102,33 @@ class BankingServiceValidationTest {
     void createAccountRejectsNegativeInitialDeposit() {
         assertThrows(InvalidAmountException.class,
                 () -> serviceWithoutDatabase().createAccount(ADMIN, "100001", "Juan", new BigDecimal("-0.01")));
+    }
+
+    @Test
+    void rejectsPaginationOutsideTheCap() {
+        // Same rule as the transaction history, and rejected before any SQL runs.
+        // (The history checks its account first, so an unknown number there is a
+        // 404 whatever the page parameter says — BankingServiceMySQLTest covers
+        // that path against a real database.)
+        assertThrows(BankingValidationException.class,
+                () -> serviceWithoutDatabase().listAccounts(ADMIN, 0, 101));
+        assertThrows(BankingValidationException.class,
+                () -> serviceWithoutDatabase().listAccounts(ADMIN, 0, 0));
+        assertThrows(BankingValidationException.class,
+                () -> serviceWithoutDatabase().listAccounts(ADMIN, -1, 20));
+    }
+
+    @Test
+    void rejectsOverlongDescriptionOnEveryMoneyMovement() {
+        String tooLong = "x".repeat(256);
+        BankingValidationException e = assertThrows(BankingValidationException.class,
+                () -> serviceWithoutDatabase().deposit(ADMIN, "100001", new BigDecimal("10.00"), tooLong));
+        assertTrue(e.getMessage().contains("at most 255"));
+        assertThrows(BankingValidationException.class,
+                () -> serviceWithoutDatabase().withdraw(ADMIN, "100001", new BigDecimal("10.00"), tooLong));
+        assertThrows(BankingValidationException.class,
+                () -> serviceWithoutDatabase().transfer(ADMIN, "100001", "100002",
+                        new BigDecimal("10.00"), tooLong));
     }
 
     @Test

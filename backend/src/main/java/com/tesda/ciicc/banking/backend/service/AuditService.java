@@ -35,6 +35,11 @@ public class AuditService {
     public static final String DEPOSIT = "DEPOSIT";
     public static final String WITHDRAW = "WITHDRAW";
     public static final String TRANSFER = "TRANSFER";
+    public static final String CATEGORY_SET = "CATEGORY_SET";
+    public static final String ANOMALY_REVIEWED = "ANOMALY_REVIEWED";
+
+    /** audit_log.username is VARCHAR(50); see V4__audit_log.sql. */
+    private static final int MAX_USERNAME_LENGTH = 50;
 
     private final AuditLogRepository auditLogs;
 
@@ -44,7 +49,21 @@ public class AuditService {
 
     @Transactional
     public void record(String username, String action, String accountNumber, String details) {
-        auditLogs.save(new AuditLog(username, action, accountNumber, details, currentIpAddress()));
+        auditLogs.save(new AuditLog(clipUsername(username), action, accountNumber, details, currentIpAddress()));
+    }
+
+    /**
+     * A login attempt arrives with a username nobody controls the length of, and
+     * its failure row is written BEFORE the client is answered. Letting that
+     * INSERT overflow VARCHAR(50) would lose the row and turn the 401 into a
+     * 500, so the value is cut to the column instead. No username that can
+     * actually exist is longer than 50 characters, so real entries are untouched.
+     */
+    private static String clipUsername(String username) {
+        if (username == null || username.length() <= MAX_USERNAME_LENGTH) {
+            return username;
+        }
+        return username.substring(0, MAX_USERNAME_LENGTH);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

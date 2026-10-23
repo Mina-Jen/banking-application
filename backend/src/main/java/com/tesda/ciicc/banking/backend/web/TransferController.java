@@ -40,10 +40,10 @@ public class TransferController {
             @ApiResponse(responseCode = "200", description = "Transfer recorded (or replayed); the response is the source account's TRANSFER_OUT entry"),
             @ApiResponse(responseCode = "400", description = "Missing or invalid Idempotency-Key"),
             @ApiResponse(responseCode = "401", description = "No valid access token"),
-            @ApiResponse(responseCode = "403", description = "Caller does not own the source account"),
-            @ApiResponse(responseCode = "404", description = "Source or destination account does not exist"),
+            @ApiResponse(responseCode = "404", description = "Source account is missing or not the caller's, or the destination does not exist — a CUSTOMER gets the same generic answer for all of them"),
             @ApiResponse(responseCode = "409", description = "Idempotency key already used with a different request"),
-            @ApiResponse(responseCode = "422", description = "Invalid amount, same account on both sides, or insufficient funds")
+            @ApiResponse(responseCode = "422", description = "Invalid amount, same account on both sides, or insufficient funds"),
+            @ApiResponse(responseCode = "429", description = "More than 60 requests in one minute for this user; Retry-After says how long to wait")
     })
     @PostMapping
     public TransactionResponse transfer(
@@ -58,6 +58,7 @@ public class TransferController {
         return idempotency.execute(idempotencyKey, "TRANSFER", String.valueOf(caller.id()), request,
                 TransactionResponse.class,
                 () -> TransactionResponse.from(banking.transfer(caller,
-                        request.sourceAccountNumber(), request.destinationAccountNumber(), amount)));
+                        request.sourceAccountNumber(), request.destinationAccountNumber(), amount,
+                        request.description())));
     }
 }

@@ -13,5 +13,13 @@ public record TransferRequest(
 
         @Schema(description = "Amount as a decimal string: greater than zero, at most two decimal places",
                 type = "string", example = "2000.00")
-        String amount) {
+        String amount,
+
+        @Schema(description = "Optional note stored on both sides of the transfer, at most 255 characters",
+                example = "Rent share")
+        String description) {
+
+    public TransferRequest(String sourceAccountNumber, String destinationAccountNumber, String amount) {
+        this(sourceAccountNumber, destinationAccountNumber, amount, null);
+    }
 }

@@ -40,6 +40,19 @@ app:
     access-token-minutes: 15
     refresh-token-days: 7
 
+  # Phase 4: AI-assisted transaction categories.
+  #   ANTHROPIC_API_KEY  optional. When unset the application still starts;
+  #                      only the suggestion endpoint answers 503. The key is
+  #                      read from the environment, never stored in this file.
+  #   CLAUDE_MODEL       optional model override (default: claude-haiku-4-5)
+  #   CLAUDE_BASE_URL    optional, for a proxy or test endpoint
+  #   ASSISTANT_MAX_TOKENS optional reply budget for /api/assistant/chat (default: 1024)
+  ai:
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: ${CLAUDE_MODEL:claude-haiku-4-5}
+    base-url: ${CLAUDE_BASE_URL:https://api.anthropic.com}
+    assistant-max-tokens: ${ASSISTANT_MAX_TOKENS:1024}
+
 management:
   endpoints:
     web:

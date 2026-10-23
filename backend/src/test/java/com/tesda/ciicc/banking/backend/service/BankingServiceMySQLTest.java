@@ -17,8 +17,8 @@ import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -34,6 +34,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -71,11 +72,18 @@ class BankingServiceMySQLTest {
 
     @BeforeEach
     void cleanDatabase() {
+        // Reverse dependency order: anomaly_flags -> transactions -> accounts,
+        // and account_owners -> both accounts and users. MySQL rejects a DELETE
+        // that orphans a child row, so every referencing table must be emptied
+        // before the table it points at. H2 tolerated the wrong order, which is
+        // why only the MySQL run caught it.
+        jdbcTemplate.update("DELETE FROM anomaly_flags");
+        jdbcTemplate.update("DELETE FROM idempotency_keys");
         jdbcTemplate.update("DELETE FROM transactions");
-        jdbcTemplate.update("DELETE FROM accounts");
-        jdbcTemplate.update("DELETE FROM audit_log");
         jdbcTemplate.update("DELETE FROM account_owners");
+        jdbcTemplate.update("DELETE FROM accounts");
         jdbcTemplate.update("DELETE FROM users");
+        jdbcTemplate.update("DELETE FROM audit_log");
     }
 
     // BigDecimal("7000") and BigDecimal("7000.00") are NOT equal() (different scale),
@@ -159,6 +167,31 @@ class BankingServiceMySQLTest {
         assertEquals(1, getTransactionHistory("100001").size());
     }
 
+    /**
+     * The funds check comes first, so an unfundable transfer says the same
+     * thing about a destination that exists and one that does not: the account
+     * number cannot be looked up with a transfer that cannot succeed.
+     */
+    @Test
+    void shortFundsAnswerIdenticallyForAnyDestination() throws Exception {
+        createAccount("100001", "Juan", new BigDecimal("100"));
+        createAccount("100002", "Pedro", new BigDecimal("100"));
+
+        InsufficientFundsException missing = assertThrows(InsufficientFundsException.class,
+                () -> transfer("100001", "999999", new BigDecimal("100.01")));
+        InsufficientFundsException existing = assertThrows(InsufficientFundsException.class,
+                () -> transfer("100001", "100002", new BigDecimal("100.01")));
+
+        assertEquals("Amount 100.01 exceeds the available balance of 100.00.", missing.getMessage());
+        assertEquals(existing.getMessage(), missing.getMessage());
+
+        // No lock, no withdraw, no partial write survives the rejected transfer.
+        assertMoney("100", getAccount("100001").getBalance());
+        assertMoney("100", getAccount("100002").getBalance());
+        assertEquals(1, getTransactionHistory("100001").size());
+        assertEquals(1, getTransactionHistory("100002").size());
+    }
+
     @Test
     void transferBetweenSameAccountInDifferentCaseIsRejected() throws Exception {
         // MySQL treats "ABC123" and "abc123" as the same row; the service must too.
@@ -220,7 +253,9 @@ class BankingServiceMySQLTest {
         assertEquals(List.of(TransactionType.DEPOSIT, TransactionType.DEPOSIT, TransactionType.WITHDRAW),
                 history.stream().map(Transaction::getTransactionType).toList());
 
-        List<Account> accounts = service.listAccounts();
+        // ADMIN sees every account; the order is the account number, not the
+        // insertion order (100002 was created first).
+        List<Account> accounts = service.listAccounts(ADMIN, 0, 20).getContent();
         assertEquals(List.of("100001", "100002"),
                 accounts.stream().map(Account::getAccountNumber).toList());
     }
@@ -338,10 +373,12 @@ class BankingServiceMySQLTest {
         createAccount("100002", "Pedro", new BigDecimal("1000"));
         CurrentUser carol = registerCustomer("carol");
 
-        assertThrows(AccessDeniedException.class, () -> getAccount(carol, "100001"));
-        assertThrows(AccessDeniedException.class,
+        assertThrows(AccountNotFoundException.class, () -> getAccount(carol, "100001"));
+        assertThrows(AccountNotFoundException.class,
                 () -> deposit(carol, "100001", new BigDecimal("50")));
-        assertThrows(AccessDeniedException.class,
+        assertThrows(AccountNotFoundException.class,
+                () -> withdraw(carol, "100001", new BigDecimal("50")));
+        assertThrows(AccountNotFoundException.class,
                 () -> transfer(carol, "100001", "100002", new BigDecimal("50")));
 
         // Nothing moved: the denial happens before any balance changes.
@@ -350,14 +387,59 @@ class BankingServiceMySQLTest {
     }
 
     @Test
-    void customerOwnsTheAccountsTheyCreate() throws Exception {
+    void deniedCustomerCannotTellForeignAccountsFromMissingOnes() throws Exception {
+        createAccount("100001", "Juan", new BigDecimal("1000"));
         CurrentUser carol = registerCustomer("carol");
-        createAccount(carol, "100003", "Carol", new BigDecimal("300"));
 
-        assertMoney("300", getAccount(carol, "100003").getBalance());
+        AccountNotFoundException foreign = assertThrows(AccountNotFoundException.class,
+                () -> getAccount(carol, "100001"));
+        AccountNotFoundException unknown = assertThrows(AccountNotFoundException.class,
+                () -> getAccount(carol, "100099"));
+
+        // Same text, no account number in it: walking a range of numbers gives
+        // byte-identical errors whether the account exists or not.
+        assertEquals("Account not found.", foreign.getMessage());
+        assertEquals(unknown.getMessage(), foreign.getMessage());
+
+        // ADMIN, who needs to know, keeps the detailed wording.
+        AccountNotFoundException adminView = assertThrows(AccountNotFoundException.class,
+                () -> getAccount("100099"));
+        assertEquals("Account 100099 does not exist.", adminView.getMessage());
+    }
+
+    @Test
+    void customerOwnsTheAccountTheBankGaveThem() throws Exception {
+        CurrentUser carol = registerCustomer("carol");
+        Account opened = service.createAccount(carol, "Carol", new BigDecimal("300"));
+
+        // Eleven digits assigned by the service, and Carol can read the account
+        // straight back with the number she was handed.
+        assertTrue(opened.getAccountNumber().matches("[1-9]\\d{10}"), opened.getAccountNumber());
+        assertMoney("300", getAccount(carol, opened.getAccountNumber()).getBalance());
 
         CurrentUser miguel = registerCustomer("miguel");
-        assertThrows(AccessDeniedException.class, () -> getAccount(miguel, "100003"));
+        assertThrows(AccountNotFoundException.class,
+                () -> getAccount(miguel, opened.getAccountNumber()));
+
+        // Miguel picking a number is a refusal about his role, not about any
+        // account: it happens before the table is read.
+        assertThrows(AccessDeniedException.class,
+                () -> service.createAccount(miguel, "100003", "Miguel", BigDecimal.TEN));
+    }
+
+    /**
+     * The customer path never answers "this number already exists", because the
+     * number it reports is one the bank just drew. Tested against the real
+     * UNIQUE index: the row is inserted first, then read back by number.
+     */
+    @Test
+    void twoCustomersGetDifferentNumbers() throws Exception {
+        Account first = service.createAccount(registerCustomer("carol"), "Carol", BigDecimal.TEN);
+        Account second = service.createAccount(registerCustomer("miguel"), "Miguel", BigDecimal.TEN);
+
+        assertFalse(first.getAccountNumber().equals(second.getAccountNumber()));
+        assertMoney("10.00", getAccount(first.getAccountNumber()).getBalance());
+        assertMoney("10.00", getAccount(second.getAccountNumber()).getBalance());
     }
 
     @Test
@@ -372,7 +454,7 @@ class BankingServiceMySQLTest {
         assertEquals(1, carolDeposits);
 
         CurrentUser miguel = registerCustomer("miguel");
-        assertThrows(AccessDeniedException.class, () -> getAccount(miguel, "100001"));
+        assertThrows(AccountNotFoundException.class, () -> getAccount(miguel, "100001"));
         Integer denied = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM audit_log WHERE username = 'miguel' AND action = 'ACCESS_DENIED'",
                 Integer.class);
@@ -386,11 +468,6 @@ class BankingServiceMySQLTest {
 
     private Account createAccount(String accountNumber, String name, BigDecimal deposit) throws Exception {
         return service.createAccount(ADMIN, accountNumber, name, deposit);
-    }
-
-    private Account createAccount(CurrentUser caller, String accountNumber, String name,
-                                  BigDecimal deposit) throws Exception {
-        return service.createAccount(caller, accountNumber, name, deposit);
     }
 
     private Account getAccount(String accountNumber) throws Exception {
@@ -411,6 +488,10 @@ class BankingServiceMySQLTest {
 
     private Transaction withdraw(String accountNumber, BigDecimal amount) throws Exception {
         return service.withdraw(ADMIN, accountNumber, amount);
+    }
+
+    private Transaction withdraw(CurrentUser caller, String accountNumber, BigDecimal amount) throws Exception {
+        return service.withdraw(caller, accountNumber, amount);
     }
 
     private Transaction transfer(String sourceAccount, String destinationAccount,
