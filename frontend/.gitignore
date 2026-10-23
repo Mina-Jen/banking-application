@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+coverage
+*.local
+.vite
+
+# Playwright run artifacts: screenshots and traces from failed tests.
+test-results
+playwright-report
+blob-report
+
+# Local env overrides (VITE_API_BASE_URL). Never commit real secrets here.
+.env
+.env.*
+!.env.example
