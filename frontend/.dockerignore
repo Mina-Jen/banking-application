@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+coverage
+test-results
+playwright-report
+blob-report
+.vite
+.env
+.env.*
+!.env.example
+.DS_Store
+.git/
+.gitignore
+Dockerfile
+.dockerignore

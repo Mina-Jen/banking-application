@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: banking-backend
+
+  datasource:
+    # Defaults match a local XAMPP install, which runs MariaDB. Point
+    # BANKING_DB_URL at a jdbc:mysql: URL for a MySQL server; the MySQL driver
+    # is on the classpath for that case.
+    url: ${BANKING_DB_URL:jdbc:mariadb://localhost:3306/banking_db?createDatabaseIfNotExist=true}
+    username: ${BANKING_DB_USER:root}
+    password: ${BANKING_DB_PASSWORD:}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    # The XAMPP database was created before Flyway was introduced. Baseline it
+    # at V1 instead of re-running CREATE TABLE against the existing tables.
+    baseline-on-migrate: true
+    baseline-version: 1
+
+# Phase 2 authentication. REQUIRED environment variable:
+#   JWT_SECRET     signing key for the tokens, at least 32 random characters
+#                  (generate one with `openssl rand -base64 48`). The app
+#                  refuses to start without it; it is deliberately NOT given
+#                  a default, because secrets never live in code.
+# Optional environment variables:
+#   ADMIN_USERNAME username of the first admin (default: admin)
+#   ADMIN_PASSWORD password for that admin; when unset, no admin is created
+app:
+  auth:
+    # Login rate limiting: after this many failed logins for one username + IP
+    # within the sliding window, further attempts get 429 until the window
+    # slides on. Counters are in memory and reset on restart.
+    max-failed-logins: 5
+    failure-window-minutes: 15
+    # Token lifetimes: short-lived access token, long-lived refresh token.
+    access-token-minutes: 15
+    refresh-token-days: 7
+
+  # Phase 4: AI-assisted transaction categories.
+  #   ANTHROPIC_API_KEY  optional. When unset the application still starts;
+  #                      only the suggestion endpoint answers 503. The key is
+  #                      read from the environment, never stored in this file.
+  #   CLAUDE_MODEL       optional model override (default: claude-haiku-4-5)
+  #   CLAUDE_BASE_URL    optional, for a proxy or test endpoint
+  #   ASSISTANT_MAX_TOKENS optional reply budget for /api/assistant/chat (default: 1024)
+  ai:
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: ${CLAUDE_MODEL:claude-haiku-4-5}
+    base-url: ${CLAUDE_BASE_URL:https://api.anthropic.com}
+    assistant-max-tokens: ${ASSISTANT_MAX_TOKENS:1024}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

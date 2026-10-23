@@ -1,0 +1,1199 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OpenAPI definition",
+    "version": "v0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:18080",
+      "description": "Generated server url"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Auth",
+      "description": "Registration, login, and token refresh"
+    },
+    {
+      "name": "Transfers",
+      "description": "Moving money between two accounts in one transaction"
+    },
+    {
+      "name": "Accounts",
+      "description": "Account management and money movement"
+    }
+  ],
+  "paths": {
+    "/api/transfers": {
+      "post": {
+        "tags": [
+          "Transfers"
+        ],
+        "summary": "Transfer money between two accounts",
+        "description": "Records TRANSFER_OUT on the source and TRANSFER_IN on the destination. The caller must own the source account; the destination may belong to anyone. Requires an Idempotency-Key header; replaying the same key with the same body returns the stored response without transferring again.",
+        "operationId": "transfer",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Transfer recorded (or replayed); the response is the source account's TRANSFER_OUT entry",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid Idempotency-Key",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source account is missing or not the caller's, or the destination does not exist — a CUSTOMER gets the same generic answer for all of them",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency key already used with a different request",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid amount, same account on both sides, or insufficient funds",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Register a customer login",
+        "description": "Always creates a CUSTOMER. ADMIN logins are created by the operator at startup from the ADMIN_PASSWORD environment variable, never through this endpoint.",
+        "operationId": "register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Login created",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Username already taken",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid username or password format",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Exchange the refresh token for a new pair",
+        "description": "Call this when the access token expires. An access token sent here is rejected.",
+        "operationId": "refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "New token pair",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refresh token is missing, invalid, or expired",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Log in and receive the token pair",
+        "description": "Returns an access token (send as 'Authorization: Bearer ...') and a long-lived refresh token for later. Repeated failed logins are rate limited with 429.",
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Logged in",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid username or password",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account is disabled",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failed login attempts",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts": {
+      "get": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "List the accounts the caller may see",
+        "description": "A CUSTOMER gets only the accounts they own; an ADMIN gets every account. Ordered by account number, oldest page first.",
+        "operationId": "listAccounts",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Zero-based page number",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            },
+            "example": 0
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "Page size, 1 to 100",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            },
+            "example": 20
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of accounts (possibly empty)",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid page or size",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPageResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPageResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "Open an account",
+        "description": "The bank assigns the account number: 11 digits, drawn on the server. Owned by the calling CUSTOMER (admins create operator accounts with no owner). A positive initial deposit is recorded as the account's first transaction. A customer never hears \"that number already exists\", because they never choose one.",
+        "operationId": "createAccount",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Account created, with its assigned number",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid account name or initial deposit",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No account number could be assigned; safe to retry",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{accountNumber}/withdrawals": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "Withdraw from an account",
+        "description": "Requires an Idempotency-Key header, same replay rules as deposit.",
+        "operationId": "withdraw",
+        "parameters": [
+          {
+            "name": "accountNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Withdrawal recorded (or replayed)",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid Idempotency-Key",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account does not exist, or is not the caller's — a CUSTOMER gets the identical answer for both",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency key already used with a different request",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid amount or insufficient funds",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{accountNumber}/deposits": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "Deposit into an account",
+        "description": "Requires an Idempotency-Key header. Replaying the same key with the same body returns the stored response without depositing again.",
+        "operationId": "deposit",
+        "parameters": [
+          {
+            "name": "accountNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Deposit recorded (or replayed)",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid Idempotency-Key",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account does not exist, or is not the caller's — a CUSTOMER gets the identical answer for both",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency key already used with a different request",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid amount",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/with-number": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "Open an account with a number the operator chose",
+        "description": "ADMIN only: an operator keys an account opened on paper or in another system. A CUSTOMER calling this is refused with 403, and a number that is taken is a 409.",
+        "operationId": "createAccountWithNumber",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountWithNumberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Account created",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an ADMIN",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Account number already exists",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid account number, name, or initial deposit",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{accountNumber}": {
+      "get": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "Get one account by account number",
+        "operationId": "getAccount",
+        "parameters": [
+          {
+            "name": "accountNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account found",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account does not exist, or is not the caller's — a CUSTOMER gets the identical answer for both",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid account number",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{accountNumber}/transactions": {
+      "get": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "Transaction history of an account, oldest first",
+        "operationId": "transactionHistory",
+        "parameters": [
+          {
+            "name": "accountNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Zero-based page number",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            },
+            "example": 0
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "Page size, 1 to 100",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            },
+            "example": 20
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of transactions",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionPageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionPageResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account does not exist, or is not the caller's — a CUSTOMER gets the identical answer for both",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionPageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid page or size",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionPageResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionPageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TransferRequest": {
+        "type": "object",
+        "description": "Request body for a transfer between two accounts",
+        "properties": {
+          "sourceAccountNumber": {
+            "type": "string",
+            "description": "Account to take the money from",
+            "example": "100001"
+          },
+          "destinationAccountNumber": {
+            "type": "string",
+            "description": "Account to put the money into",
+            "example": "100002"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Amount as a decimal string: greater than zero, at most two decimal places",
+            "example": "2000.00"
+          }
+        }
+      },
+      "TransactionResponse": {
+        "type": "object",
+        "description": "One entry of an account's transaction history",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reference": {
+            "type": "string",
+            "description": "Unique transaction reference",
+            "example": "TXN-lz3k9x00a1b2"
+          },
+          "accountNumber": {
+            "type": "string",
+            "description": "Account number exactly as the request spelled it",
+            "example": "100001"
+          },
+          "type": {
+            "type": "string",
+            "description": "DEPOSIT, WITHDRAW, TRANSFER_OUT (source side) or TRANSFER_IN (destination side)",
+            "example": "TRANSFER_OUT"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Moved amount as a decimal string",
+            "example": "2000.00"
+          },
+          "balanceAfter": {
+            "type": "string",
+            "description": "Balance of the account AFTER this transaction",
+            "example": "3500.00"
+          },
+          "referenceAccount": {
+            "type": "string",
+            "description": "Other account of a transfer, absent for deposit and withdraw",
+            "example": "100002"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "When the transaction was recorded, ISO-8601",
+            "example": "2026-10-21T17:05:00Z"
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "description": "Request body for registering a login",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "3 to 50 characters: lowercase letters, digits, dot, underscore, hyphen",
+            "example": "juan.dela"
+          },
+          "password": {
+            "type": "string",
+            "description": "8 to 72 characters",
+            "example": "correct-horse-battery"
+          }
+        }
+      },
+      "RegisterResponse": {
+        "type": "object",
+        "description": "Confirmation of a registered login",
+        "properties": {
+          "username": {
+            "type": "string",
+            "example": "juan.dela"
+          },
+          "role": {
+            "type": "string",
+            "description": "Registrations always create this role",
+            "example": "CUSTOMER"
+          }
+        }
+      },
+      "RefreshRequest": {
+        "type": "object",
+        "description": "Request body for refreshing an expired access token",
+        "properties": {
+          "refreshToken": {
+            "type": "string",
+            "description": "The refresh token received at login"
+          }
+        }
+      },
+      "TokenResponse": {
+        "type": "object",
+        "description": "Token pair returned by login and refresh",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "Send on every API call as 'Authorization: Bearer <accessToken>'"
+          },
+          "refreshToken": {
+            "type": "string",
+            "description": "Long-lived; send it to /api/auth/refresh when the access token expires"
+          },
+          "tokenType": {
+            "type": "string",
+            "description": "Token type for the Authorization header",
+            "example": "Bearer"
+          },
+          "expiresInSeconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Access token lifetime in seconds",
+            "example": 900
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "description": "Request body for logging in",
+        "properties": {
+          "username": {
+            "type": "string",
+            "example": "juan.dela"
+          },
+          "password": {
+            "type": "string",
+            "example": "correct-horse-battery"
+          }
+        }
+      },
+      "CreateAccountRequest": {
+        "type": "object",
+        "description": "Request body for opening an account. There is no account number: the bank assigns it.",
+        "properties": {
+          "accountName": {
+            "type": "string",
+            "description": "Account holder name, at most 100 characters",
+            "example": "Juan Dela Cruz"
+          },
+          "initialDeposit": {
+            "type": "string",
+            "description": "Opening deposit as a decimal string; zero creates the account without a transaction",
+            "example": "5000.00"
+          }
+        }
+      },
+      "AccountResponse": {
+        "type": "object",
+        "description": "A bank account",
+        "properties": {
+          "accountNumber": {
+            "type": "string",
+            "example": "100001"
+          },
+          "accountName": {
+            "type": "string",
+            "example": "Juan Dela Cruz"
+          },
+          "balance": {
+            "type": "string",
+            "description": "Balance in pesos with two decimal places",
+            "example": "7000.00"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "When the account was created, ISO-8601",
+            "example": "2026-10-21T17:00:00Z"
+          }
+        }
+      },
+      "AmountRequest": {
+        "type": "object",
+        "description": "Request body with a single amount",
+        "properties": {
+          "amount": {
+            "type": "string",
+            "description": "Amount as a decimal string: greater than zero, at most two decimal places",
+            "example": "2000.00"
+          }
+        }
+      },
+      "CreateAccountWithNumberRequest": {
+        "type": "object",
+        "description": "Request body for an ADMIN opening an account with a chosen number",
+        "properties": {
+          "accountNumber": {
+            "type": "string",
+            "description": "Account number chosen by the operator, at most 20 characters",
+            "example": "100001"
+          },
+          "accountName": {
+            "type": "string",
+            "description": "Account holder name, at most 100 characters",
+            "example": "Juan Dela Cruz"
+          },
+          "initialDeposit": {
+            "type": "string",
+            "description": "Opening deposit as a decimal string; zero creates the account without a transaction",
+            "example": "5000.00"
+          }
+        }
+      },
+      "AccountPageResponse": {
+        "type": "object",
+        "description": "One page of the accounts the caller may see, ordered by account number",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "description": "Accounts of this page",
+            "items": {
+              "$ref": "#/components/schemas/AccountResponse"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Zero-based page number",
+            "example": 0
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Requested page size",
+            "example": 20
+          },
+          "totalElements": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total number of accounts for this caller",
+            "example": 3
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of pages",
+            "example": 1
+          }
+        }
+      },
+      "TransactionPageResponse": {
+        "type": "object",
+        "description": "One page of an account's transaction history, oldest first",
+        "properties": {
+          "transactions": {
+            "type": "array",
+            "description": "Transactions of this page",
+            "items": {
+              "$ref": "#/components/schemas/TransactionResponse"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Zero-based page number",
+            "example": 0
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Requested page size",
+            "example": 20
+          },
+          "totalElements": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total number of transactions for the account",
+            "example": 42
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of pages",
+            "example": 3
+          }
+        }
+      }
+    }
+  }
+}

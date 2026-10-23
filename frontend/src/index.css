@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+html {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--color-slate-100);
+  color: var(--color-slate-900);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Money is right-aligned and tabular so columns of amounts line up digit by
+   digit instead of shifting with proportional glyph widths. */
+.tabular-money {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
