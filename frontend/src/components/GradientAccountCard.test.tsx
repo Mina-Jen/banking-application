@@ -37,7 +37,10 @@ describe('GradientAccountCard', () => {
   it('shows only the last four digits on the card face', () => {
     renderCard()
 
-    expect(screen.getByText('•••• 4821')).toBeInTheDocument()
+    // The masked groups are a dimmed span, so the printed string only exists as
+    // the element's whole text content.
+    const masked = screen.getByText('4821')
+    expect(masked).toHaveTextContent('•••• 4821')
     expect(screen.queryByText(NUMBER)).not.toBeInTheDocument()
   })
 
@@ -129,7 +132,7 @@ describe('GradientAccountCard', () => {
   it('uses the product line in the corner and the label', () => {
     renderCard({ kind: 'Savings' })
 
-    expect(screen.getByText('CIICC · Savings')).toBeInTheDocument()
+    expect(screen.getByText('Sinag · Savings')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Alice Reyes, Savings account ending 4821' })).toBeInTheDocument()
   })
 

@@ -56,4 +56,10 @@ describe('AppLayout navigation', () => {
     expect(screen.getByRole('link', { name: 'Review queue' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current')
   })
+
+  it('carries the demo disclaimer on every signed-in page', () => {
+    renderAt('/')
+
+    expect(screen.getByText('Demo project. Not a licensed bank.')).toBeInTheDocument()
+  })
 })

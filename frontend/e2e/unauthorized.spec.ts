@@ -9,7 +9,8 @@ test('signed-out visitors and other customers cannot reach an account', async ({
   // instead of rendering anything about the account.
   await page.goto('/accounts/200001')
   await expect(page).toHaveURL(/\/login$/)
-  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'BUKAS NA ABOT-KAMAY.' })).toBeVisible()
+  await expect(page.getByText('Demo project. Not a licensed bank.')).toBeVisible()
 
   // 2. Alice registers and owns an account. The number is the one the bank gave
   // her, not one she picked.

@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { LogoWordmark } from './Logo'
-import { cx, display, focusRingOnDark } from './ui'
+import { SiteFooter } from './SiteFooter'
+import { cx, display, eyebrowOnDark, focusRingOnDark } from './ui'
 
 const LEDGER_FACTS = [
   'Deposits, withdrawals and transfers in one ledger',
@@ -12,7 +13,7 @@ const LEDGER_FACTS = [
 function HomeLink() {
   return (
     <Link to="/" className={cx('inline-flex rounded-md', focusRingOnDark)}>
-      <LogoWordmark size={34} tone="onDark" />
+      <LogoWordmark size={34} variant="dark" />
     </Link>
   )
 }
@@ -28,24 +29,29 @@ function HomeLink() {
  * loads straight into the fields.
  *
  * The brand panel has no heading on purpose: the page's one heading is the
- * form's title, which is what tests and screen readers look for.
+ * tagline above the form, which is what tests and screen readers look for.
  */
 export function AuthLayout({
-  title,
+  eyebrow,
+  headline,
   subtitle,
   children,
   footer,
 }: {
-  title: string
+  eyebrow: string
+  headline: string
   subtitle: string
   children: ReactNode
   footer: ReactNode
 }) {
   return (
     <div className="hero-gradient min-h-dvh lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(28rem,1fr)]">
-      <div className="hidden flex-col justify-between p-14 lg:flex">
+      <div className="hidden flex-col p-14 lg:flex">
         <HomeLink />
-        <div>
+        {/* Optically centred in the space under the mark. Pinned to the bottom
+            edge, the copy left a void in the middle of the panel that the eye
+            reads as an unfinished page rather than as breathing room. */}
+        <div className="flex flex-1 flex-col justify-center pb-8">
           <p className={cx('max-w-[11ch] text-display-xl text-on-dark', display)}>
             Every peso, accounted for.
           </p>
@@ -59,19 +65,22 @@ export function AuthLayout({
         </div>
       </div>
 
-      <main className="flex min-h-dvh flex-col px-5 py-8 sm:px-10 lg:border-l lg:border-on-dark/10 lg:bg-depth-scrim/55 lg:px-14">
+      <main className="flex min-h-dvh flex-col px-5 py-8 sm:px-10 lg:border-l lg:border-on-dark/10 lg:bg-depth-veil/55 lg:px-14">
         <div className="lg:hidden">
           <HomeLink />
         </div>
 
         <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-10">
-          <h1 className={cx('text-display-xl text-on-dark lg:text-display-lg', display)}>{title}</h1>
+          <p className={eyebrowOnDark}>{eyebrow}</p>
+          <h1 className={cx('mt-3 text-display-lg text-on-dark', display)}>{headline}</h1>
           <p className="mt-3 text-base text-pretty text-on-dark-muted">{subtitle}</p>
 
           <div className="mt-8">{children}</div>
 
           <p className="mt-8 text-sm text-on-dark-muted">{footer}</p>
         </div>
+
+        <SiteFooter variant="dark" className="pt-6" />
       </main>
     </div>
   )

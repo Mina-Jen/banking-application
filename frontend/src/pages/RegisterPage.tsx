@@ -102,8 +102,9 @@ export function RegisterPage() {
 
   return (
     <AuthLayout
-      title="Create your login"
-      subtitle="Customer logins only. Administrator logins are created on the server."
+      eyebrow="Create your login"
+      headline="BUKAS NA ABOT-KAMAY."
+      subtitle="Open an account in minutes — no branch visit, no paperwork."
       footer={
         <>
           Already registered?{' '}

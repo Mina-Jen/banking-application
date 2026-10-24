@@ -26,13 +26,23 @@ export const focusRingOnDark =
 
 // ---------------------------------------------------------------- surfaces
 
-export const card = 'rounded-xl bg-surface p-6 shadow-sm ring-1 ring-line'
+export const card = 'rounded-card bg-surface p-6 shadow-elevate-1 ring-1 ring-line'
 
 /** A card raised one step further: used where a sheet overlaps the hero. */
-export const cardRaised = 'rounded-xl bg-surface p-6 shadow-lg ring-1 ring-line'
+export const cardRaised = 'rounded-card bg-surface p-6 shadow-elevate-2 ring-1 ring-line'
 
 /** Hairline separator between rows of a card or list. */
 export const divider = 'divide-y divide-line'
+
+/**
+ * A segmented control: one panel holding several mutually exclusive views. The
+ * active segment is a raised white pill, so the choice reads as physical.
+ */
+export const segmented = 'inline-flex gap-1 rounded-full bg-surface-muted p-1 ring-1 ring-line'
+
+export const segmentActive = 'bg-surface text-text shadow-elevate-1'
+
+export const segmentIdle = 'text-text-muted hover:text-text'
 
 // -------------------------------------------------------------------- text
 
@@ -166,7 +176,7 @@ export const buttonOnDark = cx(
 /** A secondary action on the gradient: outlined, no fill. */
 export const buttonOnDarkOutline = cx(
   buttonBase,
-  'text-on-dark ring-1 ring-on-dark/50 hover:bg-depth-scrim/40',
+  'text-on-dark ring-1 ring-on-dark/50 hover:bg-depth-veil/40',
   focusRingOnDark,
 )
 
@@ -221,7 +231,11 @@ export const tableCell = 'px-4 py-3 text-sm text-text-muted'
 
 // ------------------------------------------------------- gradient surfaces
 
-/** The hero surface: depth gradient, scrim and grain. See index.css. */
+/**
+ * The hero surface: depth ramp, bloom, engraving, grain and veil. See index.css.
+ * `.hero-card` is the same surface tuned for a card face, where copy may land on
+ * any pixel of it; it is applied as the class directly, the way `.display` is.
+ */
 export const hero = 'hero-gradient'
 
 /** Display headline — pair a size with it: `cx('text-display-xl', display)`. */
@@ -234,5 +248,34 @@ export const display = 'display'
  */
 export const money = 'tabular-nums'
 
+/**
+ * A money figure at display size, where the display tokens' negative tracking
+ * works against the currency sign: Manrope's ₱ has no right side bearing — its
+ * ink runs the full width of its advance — so at headline sizes the sign touches
+ * the first digit and the two read as one glyph. The tracking that separates
+ * them is far too loose for a column of small figures, which is why this is a
+ * separate token and only the page's big numbers use it.
+ */
+export const moneyDisplay = 'tabular-nums tracking-[0.05em]'
+
+/**
+ * The data face. Anything read digit by digit — a reference, a timestamp, a
+ * column of amounts in a statement — is set in the monospace so the columns
+ * align on the glyph and not on the average.
+ */
+export const figure = 'font-mono tabular-nums'
+
 /** Account numbers are digits too, and they read better slightly apart. */
-export const accountNumber = 'tabular-nums tracking-[0.08em]'
+export const accountNumber = 'font-mono tabular-nums tracking-[0.12em]'
+
+/**
+ * A compact icon-and-verb control on the depth surface. The whole pill is the
+ * target; give it an `aria-label` of the verb alone so the hint text does not
+ * run into the control's name.
+ */
+export const railAction = cx(
+  'press inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold',
+  'bg-on-dark/10 text-on-dark ring-1 ring-on-dark/25 hover:bg-on-dark/[0.18] hover:ring-on-dark/40',
+  'disabled:cursor-not-allowed disabled:opacity-45 disabled:[transform:none]',
+  focusRingOnDark,
+)

@@ -1,8 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "OpenAPI definition",
-    "version": "v0"
+    "title": "Sinag API",
+    "description": "Sinag — bukas na abot-kamay. REST API for accounts, transfers, spending categories and the operations review queue. Demo project. Not a licensed bank.",
+    "version": "1.0.0"
   },
   "servers": [
     {

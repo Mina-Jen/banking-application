@@ -174,7 +174,7 @@ export function ReviewQueuePage() {
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-on-dark',
                 filter === option.value
                   ? 'bg-on-dark text-ink-900'
-                  : 'text-on-dark ring-1 ring-on-dark/50 hover:bg-depth-scrim/40',
+                  : 'text-on-dark ring-1 ring-on-dark/50 hover:bg-depth-veil/40',
               )}
             >
               {option.label}

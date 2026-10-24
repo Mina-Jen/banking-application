@@ -51,7 +51,9 @@ describe('Card', () => {
 
   it('raises the surface without changing its meaning', () => {
     const { rerender } = render(<Card title="A" />)
-    expect(screen.getByRole('region', { name: 'A' }).classList.contains('shadow-sm')).toBe(true)
+    expect(
+      screen.getByRole('region', { name: 'A' }).classList.contains('shadow-elevate-1'),
+    ).toBe(true)
 
     rerender(
       <Card title="A" level="raised">
@@ -59,7 +61,7 @@ describe('Card', () => {
       </Card>,
     )
     const raised = screen.getByRole('region', { name: 'A' })
-    expect(raised.classList.contains('shadow-lg')).toBe(true)
-    expect(raised.classList.contains('shadow-sm')).toBe(false)
+    expect(raised.classList.contains('shadow-elevate-2')).toBe(true)
+    expect(raised.classList.contains('shadow-elevate-1')).toBe(false)
   })
 })

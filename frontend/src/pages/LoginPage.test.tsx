@@ -48,9 +48,10 @@ describe('LoginPage', () => {
 
   it('keeps the names the browser tests rely on', () => {
     renderLogin()
-    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'BUKAS NA ABOT-KAMAY.' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Register' })).toHaveAttribute('href', '/register')
+    expect(screen.getByText('Demo project. Not a licensed bank.')).toBeInTheDocument()
     expect(screen.getAllByRole('heading')).toHaveLength(1)
   })
 

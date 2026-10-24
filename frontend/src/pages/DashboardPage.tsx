@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AccountActionSheet, type AccountAction } from '../components/AccountActionSheet'
-import { ActionTile } from '../components/ActionTile'
 import { Alert } from '../components/Alert'
 import { Button } from '../components/Button'
 import { EmptyState } from '../components/EmptyState'
@@ -10,7 +9,7 @@ import { OpenAccountForm } from '../components/OpenAccountForm'
 import { Sheet } from '../components/Sheet'
 import { Skeleton } from '../components/Skeleton'
 import { Toast } from '../components/Toast'
-import { card, cx, display, eyebrowOnDark } from '../components/ui'
+import { card, cx, display, eyebrowOnDark, moneyDisplay, railAction } from '../components/ui'
 import { bankingApi, type Account } from '../api/banking'
 import type { Transaction } from '../api/types'
 import { errorMessage } from '../api/errors'
@@ -86,7 +85,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <section className="hero-gradient overflow-hidden rounded-2xl p-5 shadow-lg sm:p-8">
+      <section className="hero-gradient overflow-hidden rounded-card p-5 shadow-elevate-3 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div>
             <p className={eyebrowOnDark}>Your portfolio</p>
@@ -110,45 +109,53 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <div className="mt-10">
-          <p className={eyebrowOnDark}>Total balance</p>
-          {loading ? (
-            <>
-              <p className="mt-3 text-sm text-on-dark-muted">Loading accounts…</p>
-              <Skeleton className="mt-2 h-12 w-56 bg-on-dark/20 sm:h-16 sm:w-80" />
-            </>
-          ) : (
-            <p className="mt-2 text-display-xl font-bold tabular-nums text-on-dark">
-              {formatPesos(total)}
-            </p>
-          )}
-        </div>
+        <div className="mt-10 flex flex-wrap items-end justify-between gap-x-10 gap-y-6">
+          <div>
+            <p className={eyebrowOnDark}>Total balance</p>
+            {loading ? (
+              <>
+                <p className="mt-3 text-sm text-on-dark-muted">Loading accounts…</p>
+                <Skeleton className="mt-2 h-12 w-56 bg-on-dark/20 sm:h-16 sm:w-80" />
+              </>
+            ) : (
+              <p className={cx(moneyDisplay, 'mt-2 text-display-xl font-bold text-on-dark')}>
+                {formatPesos(total)}
+              </p>
+            )}
+          </div>
 
-        <div className="mt-10 grid grid-cols-3 gap-2 sm:gap-4">
-          <ActionTile
-            tone="onDark"
-            label="Deposit"
-            hint="Add funds"
-            icon={<IconDeposit className="h-5 w-5" />}
-            disabled={actionsDisabled}
-            onClick={() => setAction('deposit')}
-          />
-          <ActionTile
-            tone="onDark"
-            label="Withdraw"
-            hint="Take out funds"
-            icon={<IconWithdraw className="h-5 w-5" />}
-            disabled={actionsDisabled}
-            onClick={() => setAction('withdraw')}
-          />
-          <ActionTile
-            tone="onDark"
-            label="Transfer"
-            hint="Send money"
-            icon={<IconTransfer className="h-5 w-5" />}
-            disabled={actionsDisabled}
-            onClick={() => setAction('transfer')}
-          />
+          {/* The money rail: the three verbs, one line, on the bright end of the
+              surface. Each is named by its verb alone, so the accessible name is
+              the word on the pill. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={railAction}
+              disabled={actionsDisabled}
+              onClick={() => setAction('deposit')}
+            >
+              <IconDeposit className="h-4 w-4" />
+              Deposit
+            </button>
+            <button
+              type="button"
+              className={railAction}
+              disabled={actionsDisabled}
+              onClick={() => setAction('withdraw')}
+            >
+              <IconWithdraw className="h-4 w-4" />
+              Withdraw
+            </button>
+            <button
+              type="button"
+              className={railAction}
+              disabled={actionsDisabled}
+              onClick={() => setAction('transfer')}
+            >
+              <IconTransfer className="h-4 w-4" />
+              Transfer
+            </button>
+          </div>
         </div>
         {!loading && accounts.length === 0 ? (
           <p className="mt-3 text-xs text-on-dark-muted">Open an account to use money actions.</p>
@@ -174,8 +181,8 @@ export function DashboardPage() {
           <div>
             <p className="mb-3 text-sm text-text-subtle">Loading account cards…</p>
             <div className="grid gap-4 lg:grid-cols-2">
-              <Skeleton className="h-64 rounded-2xl" />
-              <Skeleton className="h-64 rounded-2xl" />
+              <Skeleton className="h-64 rounded-card" />
+              <Skeleton className="h-64 rounded-card" />
             </div>
           </div>
         ) : failure !== null ? (

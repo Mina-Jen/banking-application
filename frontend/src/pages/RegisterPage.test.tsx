@@ -45,10 +45,11 @@ describe('RegisterPage', () => {
 
   it('keeps the names the browser tests rely on', () => {
     renderRegister()
-    expect(screen.getByRole('heading', { name: 'Create your login' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'BUKAS NA ABOT-KAMAY.' })).toBeInTheDocument()
     // Playwright matches the button name as a substring: only one may contain "Register".
     expect(screen.getAllByRole('button', { name: /register/i })).toHaveLength(1)
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
+    expect(screen.getByText('Demo project. Not a licensed bank.')).toBeInTheDocument()
     expect(screen.getAllByLabelText('Password')).toHaveLength(1)
   })
 

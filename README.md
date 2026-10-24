@@ -1,4 +1,6 @@
-# CIICC Banking
+# Sinag
+
+**Bukas na abot-kamay.**
 
 [![CI](https://github.com/Mina-Jen/banking-application/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Mina-Jen/banking-application/actions/workflows/ci.yml)
 [![Java 17](https://img.shields.io/badge/Java-17-informational)](https://openjdk.org/projects/jdk/17/)
