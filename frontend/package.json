@@ -18,6 +18,7 @@
     "sync:api": "node scripts/sync-openapi.mjs && npm run generate:api"
   },
   "dependencies": {
+    "@fontsource-variable/manrope": "^5.3.0",
     "@hookform/resolvers": "^5.9.2",
     "openapi-fetch": "0.17.0",
     "react": "19.3.1",

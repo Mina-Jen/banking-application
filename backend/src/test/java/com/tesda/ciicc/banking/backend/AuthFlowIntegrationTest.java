@@ -424,6 +424,43 @@ class AuthFlowIntegrationTest {
                 .andExpect(jsonPath("$.balance").value("75.50"));
     }
 
+    @Test
+    void adminCanReadButNeverMoveACustomersMoney() throws Exception {
+        register("nadia1", "nadia-password-1");
+        String nadiaAccount = openAccount("nadia1", "nadia-password-1", "Nadia", "200.00");
+        register("oscar1", "oscar-password-1");
+        String oscarAccount = openAccount("oscar1", "oscar-password-1", "Oscar", "50.00");
+        String adminToken = accessToken("admin", "integration-admin-password");
+
+        mockMvc.perform(post("/api/accounts/" + nadiaAccount + "/deposits")
+                        .header("Authorization", bearer(adminToken))
+                        .header("Idempotency-Key", "admin-deposit-1")
+                        .contentType("application/json")
+                        .content("{\"amount\":\"10.00\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message", containsString("Administrators cannot deposit")));
+        mockMvc.perform(post("/api/accounts/" + nadiaAccount + "/withdrawals")
+                        .header("Authorization", bearer(adminToken))
+                        .header("Idempotency-Key", "admin-withdraw-1")
+                        .contentType("application/json")
+                        .content("{\"amount\":\"10.00\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/transfers")
+                        .header("Authorization", bearer(adminToken))
+                        .header("Idempotency-Key", "admin-transfer-1")
+                        .contentType("application/json")
+                        .content("{\"sourceAccountNumber\":\"" + nadiaAccount
+                                + "\",\"destinationAccountNumber\":\"" + oscarAccount + "\","
+                                + "\"amount\":\"10.00\"}"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/accounts/" + nadiaAccount).header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value("200.00"));
+        mockMvc.perform(get("/api/accounts/" + oscarAccount).header("Authorization", bearer(adminToken)))
+                .andExpect(jsonPath("$.balance").value("50.00"));
+    }
+
     // =====================================================================
     //  Login rate limiting
     // =====================================================================

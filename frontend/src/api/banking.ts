@@ -13,9 +13,31 @@
 
 import { client } from './client'
 import { ApiError } from './errors'
-import type { Account, AccountPage, RegisteredUser, TokenPair, Transaction, TransactionPage } from './types'
+import type {
+  Account,
+  AccountPage,
+  AnomalyFlag,
+  AnomalyFlagPage,
+  AnomalyStatus,
+  ReconciliationReport,
+  RegisteredUser,
+  TokenPair,
+  Transaction,
+  TransactionPage,
+} from './types'
 
-export type { Account, AccountPage, RegisteredUser, TokenPair, Transaction, TransactionPage }
+export type {
+  Account,
+  AccountPage,
+  AnomalyFlag,
+  AnomalyFlagPage,
+  AnomalyStatus,
+  ReconciliationReport,
+  RegisteredUser,
+  TokenPair,
+  Transaction,
+  TransactionPage,
+}
 
 /**
  * Request body for opening an account. There is no account number to send: the
@@ -171,5 +193,40 @@ export const bankingApi = {
         params: { path: { accountNumber }, query: { page, size } },
       }),
     )
+  },
+
+  /**
+   * ADMIN only: one page of rule findings, newest first. Omitting `status`
+   * returns every state; the queue passes 'OPEN' to show only work left.
+   */
+  async anomalyFlags(
+    status?: AnomalyStatus,
+    page = 0,
+    size = 20,
+  ): Promise<AnomalyFlagPage> {
+    return unwrap<AnomalyFlagPage>(
+      await client.GET('/api/anomaly-flags', { params: { query: { status, page, size } } }),
+    )
+  },
+
+  /**
+   * ADMIN only: closes an OPEN flag. The decision is one-way, so a flag that is
+   * already closed answers 409.
+   */
+  async reviewAnomalyFlag(flagId: number, status: 'REVIEWED' | 'DISMISSED'): Promise<AnomalyFlag> {
+    return unwrap<AnomalyFlag>(
+      await client.PUT('/api/anomaly-flags/{flagId}', {
+        params: { path: { flagId } },
+        body: { status },
+      }),
+    )
+  },
+
+  /**
+   * ADMIN only: compares every account's stored balance with its ledger rows.
+   * The call runs the check, so it is the "re-run" button as well.
+   */
+  async reconciliation(): Promise<ReconciliationReport> {
+    return unwrap<ReconciliationReport>(await client.GET('/api/reconciliation'))
   },
 }

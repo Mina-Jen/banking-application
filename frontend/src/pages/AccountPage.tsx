@@ -2,12 +2,24 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Alert } from '../components/Alert'
 import { AmountActionForm } from '../components/AmountActionForm'
-import { Spinner } from '../components/Spinner'
+import { Button } from '../components/Button'
+import { IconArrowLeft } from '../components/Icon'
+import { Skeleton } from '../components/Skeleton'
 import { TransactionTable } from '../components/TransactionTable'
 import { TransferForm } from '../components/TransferForm'
-import { buttonSecondary, card, cx } from '../components/ui'
+import {
+  accountNumber as accountNumberStyle,
+  card,
+  cardRaised,
+  cx,
+  display,
+  eyebrowOnDark,
+  linkOnDark,
+  money,
+} from '../components/ui'
 import { bankingApi, type Account, type TransactionPage } from '../api/banking'
 import { errorMessage } from '../api/errors'
+import { useAuth } from '../auth/AuthContext'
 import { formatPesos } from '../lib/money'
 
 const PAGE_SIZE = 10
@@ -16,12 +28,17 @@ const PAGE_SIZE = 10
  * One account: its balance, the three ways to move money out of or into it, and
  * its transaction history.
  *
+ * An ADMIN sees the same page without the money forms: the backend refuses an
+ * admin deposit, withdrawal or transfer, so offering the controls would only
+ * produce a 403.
+ *
  * `accountNumber` comes from the URL. React Router has already percent-decoded
  * it, so it is used as-is — decoding again would corrupt a number containing a
  * literal '%' or '+'.
  */
 export function AccountPage() {
   const { accountNumber = '' } = useParams()
+  const { isAdmin } = useAuth()
 
   const [account, setAccount] = useState<Account | null>(null)
   const [history, setHistory] = useState<TransactionPage | null>(null)
@@ -121,17 +138,36 @@ export function AccountPage() {
 
   if (loading) {
     return (
-      <p className="flex items-center gap-2 py-16 text-sm text-slate-500">
-        <Spinner className="text-slate-400" /> Loading account {accountNumber}…
-      </p>
+      <div>
+        <section className="hero-gradient overflow-hidden rounded-2xl px-5 pb-20 pt-6 shadow-lg sm:px-8 sm:pb-24 sm:pt-8">
+          <p className={eyebrowOnDark}>Loading account {accountNumber}…</p>
+          <Skeleton className="mt-5 h-8 w-48 bg-on-dark/20" />
+          <Skeleton className="mt-8 h-14 w-64 bg-on-dark/20" />
+        </section>
+        <section
+          aria-label="Loading transaction history"
+          className={cx(cardRaised, 'relative z-10 mx-3 -mt-12 rounded-2xl p-4 sm:mx-8 sm:-mt-16 sm:p-6')}
+        >
+          <Skeleton className="h-7 w-48" />
+          <div className="mt-6 space-y-4">
+            {[0, 1, 2].map((row) => (
+              <div key={row} className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+                <Skeleton className="h-10 flex-1" />
+                <Skeleton className="h-6 w-20" />
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
     )
   }
 
   if (fatal !== null || account === null) {
     return (
       <div className="space-y-4">
-        <Link to="/" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">
-          &larr; Back to your accounts
+        <Link to="/" className="text-sm font-medium text-action hover:text-action-strong">
+          &larr; {isAdmin ? 'Back to the overview' : 'Back to your accounts'}
         </Link>
         <Alert tone="error" title="This account is not available">
           {fatal ?? 'The account could not be loaded.'}
@@ -144,119 +180,149 @@ export function AccountPage() {
   const currentPage = history?.page ?? page
 
   return (
-    <div className="space-y-8">
-      <Link to="/" className="text-sm font-medium text-emerald-700 hover:text-emerald-800">
-        &larr; Back to your accounts
-      </Link>
+    <div>
+      <section className="hero-gradient overflow-hidden rounded-2xl px-5 pb-20 pt-5 shadow-lg sm:px-8 sm:pb-24 sm:pt-8">
+        <Link to="/" className={cx(linkOnDark, 'inline-flex min-h-11 items-center gap-2 text-sm')}>
+          <IconArrowLeft className="h-4 w-4" />
+          {isAdmin ? 'Back to the overview' : 'Back to your accounts'}
+        </Link>
 
-      <div className={cx(card, 'flex flex-wrap items-end justify-between gap-6')}>
-        <div>
-          <p className="text-sm text-slate-500">Account</p>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            {account.accountName}
-          </h1>
-          <p className="tabular-money mt-1 font-mono text-sm text-slate-500">{account.accountNumber}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-sm text-slate-500">Balance</p>
-          <p className="tabular-money text-3xl font-semibold text-slate-900">
-            {formatPesos(account.balance)}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <section className={card} aria-labelledby="deposit-heading">
-          <h2 id="deposit-heading" className="mb-4 text-lg font-semibold text-slate-900">
-            Deposit
-          </h2>
-          <AmountActionForm
-            kind="deposit"
-            accountNumber={account.accountNumber}
-            availableBalance={account.balance}
-            fieldLabel="Amount to deposit"
-            submitLabel="Deposit"
-            busyLabel="Depositing…"
-            run={(amount, key) => bankingApi.deposit(account.accountNumber, amount, key)}
-            onDone={() => void afterMoneyMoved()}
-          />
-        </section>
-
-        <section className={card} aria-labelledby="withdraw-heading">
-          <h2 id="withdraw-heading" className="mb-4 text-lg font-semibold text-slate-900">
-            Withdraw
-          </h2>
-          <AmountActionForm
-            kind="withdraw"
-            accountNumber={account.accountNumber}
-            availableBalance={account.balance}
-            fieldLabel="Amount to withdraw"
-            submitLabel="Withdraw"
-            busyLabel="Withdrawing…"
-            run={(amount, key) => bankingApi.withdraw(account.accountNumber, amount, key)}
-            onDone={() => void afterMoneyMoved()}
-          />
-        </section>
-
-        <section className={card} aria-labelledby="transfer-heading">
-          <h2 id="transfer-heading" className="mb-4 text-lg font-semibold text-slate-900">
-            Transfer
-          </h2>
-          <TransferForm
-            sourceAccountNumber={account.accountNumber}
-            availableBalance={account.balance}
-            run={(input, key) => bankingApi.transfer(input, key)}
-            onDone={() => void afterMoneyMoved()}
-          />
-        </section>
-      </div>
-
-      <section className={card} aria-labelledby="history-heading">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="mt-8 flex flex-wrap items-end justify-between gap-8">
           <div>
-            <h2 id="history-heading" className="text-lg font-semibold text-slate-900">
-              Transaction history
-            </h2>
-            <p className="text-sm text-slate-600">
-              {history
-                ? `${history.totalElements} transaction${history.totalElements === 1 ? '' : 's'}, oldest first`
-                : 'History is unavailable right now.'}
+            <p className={eyebrowOnDark}>Account</p>
+            <h1 className={cx('mt-2 text-display-md text-on-dark sm:text-display-lg', display)}>
+              {account.accountName}
+            </h1>
+            <p className={cx(accountNumberStyle, 'mt-3 font-mono text-sm text-on-dark-muted')}>
+              {account.accountNumber}
             </p>
           </div>
+          <div className="sm:text-right">
+            <p className={eyebrowOnDark}>Balance</p>
+            <p className={cx(money, 'mt-2 text-display-lg font-bold text-on-dark')}>
+              {formatPesos(account.balance)}
+            </p>
+          </div>
+        </div>
+      </section>
 
-          {totalPages > 1 ? (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className={buttonSecondary}
-                disabled={historyBusy || currentPage <= 0}
-                onClick={() => setPage(currentPage - 1)}
-              >
-                Previous
-              </button>
-              <span className="tabular-money text-sm text-slate-600" aria-live="polite">
-                Page {currentPage + 1} of {totalPages}
-              </span>
-              <button
-                type="button"
-                className={buttonSecondary}
-                disabled={historyBusy || currentPage >= totalPages - 1}
-                onClick={() => setPage(currentPage + 1)}
-              >
-                Next
-              </button>
-            </div>
-          ) : null}
+      <section
+        className={cx(
+          cardRaised,
+          'relative z-10 mx-3 -mt-12 rounded-2xl p-4 sm:mx-8 sm:-mt-16 sm:p-6',
+        )}
+        aria-labelledby="history-heading"
+      >
+        <div className="mb-6">
+          <h2 id="history-heading" className="text-display-sm font-bold text-text sm:text-display-md">
+            Transaction history
+          </h2>
+          <p className="mt-1 text-sm text-text-muted">
+            {history
+              ? `${history.totalElements} transaction${history.totalElements === 1 ? '' : 's'}, newest first`
+              : 'History is unavailable right now.'}
+          </p>
         </div>
 
         {historyBusy ? (
-          <p className="flex items-center gap-2 py-8 text-sm text-slate-500">
-            <Spinner className="text-slate-400" /> Loading…
-          </p>
+          <div role="status" className="space-y-4 py-2">
+            <span className="sr-only">Loading transaction history…</span>
+            {[0, 1, 2].map((row) => (
+              <div key={row} className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+                <Skeleton className="h-10 flex-1" />
+                <Skeleton className="h-6 w-20" />
+              </div>
+            ))}
+          </div>
         ) : history ? (
           <TransactionTable transactions={history.transactions} />
         ) : null}
+
+        {totalPages > 1 ? (
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={historyBusy || currentPage <= 0}
+              onClick={() => setPage(currentPage - 1)}
+            >
+              Older
+            </Button>
+            <span className="text-sm text-text-muted tabular-nums" aria-live="polite">
+              Page {currentPage + 1} of {totalPages}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={historyBusy || currentPage >= totalPages - 1}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              Newer
+            </Button>
+          </div>
+        ) : null}
       </section>
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-3">
+        {isAdmin ? (
+          <section className={cx(card, 'lg:col-span-3')} aria-labelledby="admin-note-heading">
+            <h2 id="admin-note-heading" className="mb-2 text-lg font-semibold text-text">
+              Read-only view
+            </h2>
+            <p className="text-sm text-text-muted">
+              Administrators can see every account but cannot deposit, withdraw or transfer. Only
+              the account holder moves money.
+            </p>
+          </section>
+        ) : (
+          <>
+            <section className={card} aria-labelledby="deposit-heading">
+              <h2 id="deposit-heading" className="mb-4 text-lg font-semibold text-text">
+                Deposit
+              </h2>
+              <AmountActionForm
+                kind="deposit"
+                accountNumber={account.accountNumber}
+                availableBalance={account.balance}
+                fieldLabel="Amount to deposit"
+                submitLabel="Deposit"
+                busyLabel="Depositing…"
+                run={(amount, key) => bankingApi.deposit(account.accountNumber, amount, key)}
+                onDone={() => void afterMoneyMoved()}
+              />
+            </section>
+
+            <section className={card} aria-labelledby="withdraw-heading">
+              <h2 id="withdraw-heading" className="mb-4 text-lg font-semibold text-text">
+                Withdraw
+              </h2>
+              <AmountActionForm
+                kind="withdraw"
+                accountNumber={account.accountNumber}
+                availableBalance={account.balance}
+                fieldLabel="Amount to withdraw"
+                submitLabel="Withdraw"
+                busyLabel="Withdrawing…"
+                run={(amount, key) => bankingApi.withdraw(account.accountNumber, amount, key)}
+                onDone={() => void afterMoneyMoved()}
+              />
+            </section>
+
+            <section className={card} aria-labelledby="transfer-heading">
+              <h2 id="transfer-heading" className="mb-4 text-lg font-semibold text-text">
+                Transfer
+              </h2>
+              <TransferForm
+                sourceAccountNumber={account.accountNumber}
+                availableBalance={account.balance}
+                run={(input, key) => bankingApi.transfer(input, key)}
+                onDone={() => void afterMoneyMoved()}
+              />
+            </section>
+          </>
+        )}
+      </div>
     </div>
   )
 }

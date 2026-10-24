@@ -18,6 +18,8 @@ function transaction(overrides: Partial<Transaction> = {}): Transaction {
     amount: '5.00',
     balanceAfter: '995.00',
     referenceAccount: DESTINATION,
+    description: '',
+    category: '',
     createdAt: '2026-10-22T10:05:00Z',
     ...overrides,
   }

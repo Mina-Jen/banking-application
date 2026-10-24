@@ -2,10 +2,9 @@ import { useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Alert } from './Alert'
-import { AmountField } from './AmountField'
-import { Field } from './Field'
-import { Spinner } from './Spinner'
-import { buttonPrimary } from './ui'
+import { Button } from './Button'
+import { MoneyInput } from './MoneyInput'
+import { Input } from './Input'
 import { bankingApi, type Account } from '../api/banking'
 import { errorMessage } from '../api/errors'
 import { normalizeAmount } from '../lib/money'
@@ -26,7 +25,15 @@ import { openAccountSchema, type OpenAccountValues } from '../forms/schemas'
  * here by design: creating an account does not move money out of an existing
  * one, and the opening deposit is typed in full view immediately before submit.
  */
-export function OpenAccountForm({ onCreated }: { onCreated: (account: Account) => void }) {
+export function OpenAccountForm({
+  onCreated,
+  feedback = 'inline',
+  onError,
+}: {
+  onCreated: (account: Account) => void
+  feedback?: 'inline' | 'external'
+  onError?(message: string): void
+}) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -54,7 +61,9 @@ export function OpenAccountForm({ onCreated }: { onCreated: (account: Account) =
       onCreated(account)
     } catch (cause) {
       // 422 = the backend rejected a field, 503 = it could not assign a number.
-      setError(errorMessage(cause))
+      const message = errorMessage(cause)
+      setError(message)
+      onError?.(message)
     } finally {
       setSubmitting(false)
     }
@@ -62,13 +71,13 @@ export function OpenAccountForm({ onCreated }: { onCreated: (account: Account) =
 
   return (
     <form onSubmit={handleSubmit(onValid)} noValidate className="space-y-4">
-      {error ? <Alert tone="error">{error}</Alert> : null}
+      {feedback === 'inline' && error ? <Alert tone="error">{error}</Alert> : null}
 
       <Controller
         control={control}
         name="accountName"
         render={({ field, fieldState }) => (
-          <Field
+          <Input
             label="Account holder name"
             value={field.value}
             inputRef={field.ref}
@@ -87,7 +96,7 @@ export function OpenAccountForm({ onCreated }: { onCreated: (account: Account) =
         control={control}
         name="initialDeposit"
         render={({ field, fieldState }) => (
-          <AmountField
+          <MoneyInput
             label="Opening deposit"
             value={field.value}
             inputRef={field.ref}
@@ -100,14 +109,13 @@ export function OpenAccountForm({ onCreated }: { onCreated: (account: Account) =
         )}
       />
 
-      <p className="text-sm text-neutral-600">
+      <p className="text-sm text-text-muted">
         The bank assigns the account number when the account is opened.
       </p>
 
-      <button type="submit" className={buttonPrimary} disabled={submitting}>
-        {submitting ? <Spinner /> : null}
+      <Button type="submit" loading={submitting}>
         {submitting ? 'Opening…' : 'Open account'}
-      </button>
+      </Button>
     </form>
   )
 }

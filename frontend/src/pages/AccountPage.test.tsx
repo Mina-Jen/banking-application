@@ -6,6 +6,11 @@ import { AccountPage } from './AccountPage'
 import { bankingApi, type Account, type TransactionPage } from '../api/banking'
 import { ApiError } from '../api/errors'
 
+/** The page hides the money forms for an ADMIN, so each test picks a role. */
+const auth = vi.hoisted(() => ({ isAdmin: false }))
+
+vi.mock('../auth/AuthContext', () => ({ useAuth: () => auth }))
+
 vi.mock('../api/banking', () => ({
   bankingApi: {
     getAccount: vi.fn(),
@@ -37,6 +42,8 @@ function page(pageNumber: number, totalPages: number, totalElements: number): Tr
         amount: '10.00',
         balanceAfter: '1000.00',
         referenceAccount: '',
+        description: '',
+        category: '',
         createdAt: '2026-10-20T09:00:00Z',
       },
     ],
@@ -67,6 +74,7 @@ function renderAccountPage(accountNumber = '200001') {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  auth.isAdmin = false
 })
 
 describe('AccountPage states', () => {
@@ -78,6 +86,7 @@ describe('AccountPage states', () => {
     renderAccountPage()
 
     expect(screen.getByText(/Loading account 200001…/)).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Loading transaction history' })).toBeInTheDocument()
   })
 
   it('shows a fatal error instead of the forms when the account is not available', async () => {
@@ -108,9 +117,14 @@ describe('AccountPage states', () => {
     expect(screen.getByRole('heading', { name: 'Withdraw' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Transfer' })).toBeInTheDocument()
 
-    expect(await screen.findByText('0 transactions, oldest first')).toBeInTheDocument()
-    expect(screen.getByText('No transactions on this page yet.')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Previous' })).not.toBeInTheDocument()
+    expect(await screen.findByText('0 transactions, newest first')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'No transactions yet' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Older' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Transaction history' }).closest('section')).toHaveClass(
+      '-mt-12',
+      'rounded-2xl',
+      'bg-surface',
+    )
   })
 
   it('opens the most recent page and pages backwards through history', async () => {
@@ -121,16 +135,39 @@ describe('AccountPage states', () => {
 
     renderAccountPage()
 
-    // History is oldest-first, so the newest transactions are on the last page.
+    // The backend pages oldest-first, so the newest transactions are on the last page.
     expect(await screen.findByText('Page 3 of 3')).toBeInTheDocument()
-    expect(screen.getByText('25 transactions, oldest first')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled()
+    expect(screen.getByText('25 transactions, newest first')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Newer' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Older' })).toBeEnabled()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Previous' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Older' }))
 
     expect(await screen.findByText('Page 2 of 3')).toBeInTheDocument()
     expect(transactionHistory).toHaveBeenLastCalledWith('200001', 1, 10)
+  })
+
+  it('shows history skeletons while another page is loading', async () => {
+    const olderPage = deferred<TransactionPage>()
+    getAccount.mockResolvedValue(ACCOUNT)
+    transactionHistory.mockImplementation((_accountNumber, pageNumber) => {
+      if (pageNumber === 1) {
+        return olderPage.promise
+      }
+      return Promise.resolve(page(pageNumber ?? 0, 3, 25))
+    })
+
+    renderAccountPage()
+    expect(await screen.findByText('Page 3 of 3')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Older' }))
+
+    expect(await screen.findByText('Loading transaction history…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Older' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Newer' })).toBeDisabled()
+
+    olderPage.resolve(page(1, 3, 25))
+    expect(await screen.findByText('Page 2 of 3')).toBeInTheDocument()
   })
 
   it('keeps the balance usable when history cannot be loaded', async () => {
@@ -142,5 +179,20 @@ describe('AccountPage states', () => {
     expect(await screen.findByRole('heading', { name: 'Alice Santos' })).toBeInTheDocument()
     expect(screen.getByText('History is unavailable right now.')).toBeInTheDocument()
     expect(screen.getByText('₱1,000.00')).toBeInTheDocument()
+  })
+
+  it('gives an admin the history but none of the money forms', async () => {
+    auth.isAdmin = true
+    getAccount.mockResolvedValue(ACCOUNT)
+    transactionHistory.mockResolvedValue(page(0, 1, 1))
+
+    renderAccountPage()
+
+    expect(await screen.findByRole('heading', { name: 'Read-only view' })).toBeInTheDocument()
+    expect(screen.getByText(/Administrators can see every account but cannot deposit/)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Deposit' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Withdraw' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Transfer' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Transaction history' })).toBeInTheDocument()
   })
 })

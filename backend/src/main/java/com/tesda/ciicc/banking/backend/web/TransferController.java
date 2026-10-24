@@ -40,6 +40,7 @@ public class TransferController {
             @ApiResponse(responseCode = "200", description = "Transfer recorded (or replayed); the response is the source account's TRANSFER_OUT entry"),
             @ApiResponse(responseCode = "400", description = "Missing or invalid Idempotency-Key"),
             @ApiResponse(responseCode = "401", description = "No valid access token"),
+            @ApiResponse(responseCode = "403", description = "Administrators cannot move money"),
             @ApiResponse(responseCode = "404", description = "Source account is missing or not the caller's, or the destination does not exist — a CUSTOMER gets the same generic answer for all of them"),
             @ApiResponse(responseCode = "409", description = "Idempotency key already used with a different request"),
             @ApiResponse(responseCode = "422", description = "Invalid amount, same account on both sides, or insufficient funds"),

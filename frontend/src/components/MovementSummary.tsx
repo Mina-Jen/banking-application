@@ -16,13 +16,13 @@ export interface SummaryRow {
  */
 export function MovementSummary({ rows }: { rows: SummaryRow[] }) {
   return (
-    <dl className="divide-y divide-slate-200 rounded-lg bg-slate-50 px-4 ring-1 ring-slate-200">
+    <dl className="divide-y divide-line rounded-lg bg-surface-muted px-4 ring-1 ring-line">
       {rows.map((row) => (
         <div key={row.label} className="flex items-baseline justify-between gap-4 py-2.5">
-          <dt className="text-sm text-slate-600">{row.label}</dt>
+          <dt className="text-sm text-text-muted">{row.label}</dt>
           <dd
             className={cx(
-              'text-right text-sm text-slate-900',
+              'text-right text-sm text-text',
               row.mono && 'font-mono',
               row.strong && 'tabular-money text-lg font-semibold',
             )}

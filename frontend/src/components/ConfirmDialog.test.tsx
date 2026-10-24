@@ -46,6 +46,12 @@ describe('ConfirmDialog', () => {
     expect(screen.getByText('Amount ₱25.00')).toBeInTheDocument()
   })
 
+  it('renders above the sheet that opened it', () => {
+    renderDialog()
+
+    expect(screen.getByRole('dialog').parentElement).toHaveClass('z-[70]')
+  })
+
   it('moves focus to Cancel, not Confirm, so a stray Enter does nothing', () => {
     renderDialog()
 

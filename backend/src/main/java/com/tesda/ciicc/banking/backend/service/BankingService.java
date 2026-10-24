@@ -244,7 +244,7 @@ public class BankingService {
         String note = requireDescription(description);
 
         // The ownership lookup does not lock, so it can run before SELECT ... FOR UPDATE.
-        requireOwnership(caller, accountNumber);
+        requireAccountHolder(caller, accountNumber, "deposit");
         Account account = findAccountForUpdate(accountNumber, caller);
         account.deposit(amount);
         requireStorableBalance(account.getBalance());
@@ -269,7 +269,7 @@ public class BankingService {
         requirePositiveMoney(amount, "Withdrawal amount");
         String note = requireDescription(description);
 
-        requireOwnership(caller, accountNumber);
+        requireAccountHolder(caller, accountNumber, "withdraw");
         Account account = findAccountForUpdate(accountNumber, caller);
         account.withdraw(amount);
         Transaction transaction = recordTransaction(accountNumber, TransactionType.WITHDRAW,
@@ -317,7 +317,7 @@ public class BankingService {
         // Source ownership is settled before any row is locked. The lookup does
         // not lock, and the account-number ordering of the two locks below is
         // unchanged, so this cannot introduce a deadlock.
-        requireOwnership(caller, sourceAccount);
+        requireAccountHolder(caller, sourceAccount, "transfer");
 
         // Lock in account-number order rather than source-first order, so two
         // opposite transfers cannot each hold one lock and wait for the other.
@@ -334,9 +334,9 @@ public class BankingService {
         Optional<Account> sourceRow = sourceLockedFirst ? firstLocked : secondLocked;
         Optional<Account> destinationRow = sourceLockedFirst ? secondLocked : firstLocked;
 
-        // The source is resolved first: for a CUSTOMER requireOwnership already
-        // answered with the generic 404, so this only fires for an ADMIN, who is
-        // entitled to know which number is missing.
+        // The source is resolved first: requireAccountHolder already answered a
+        // foreign or missing source with the generic 404, so this only covers an
+        // owner row whose account vanished in between.
         Account source = requireFound(sourceRow, sourceAccount, caller);
 
         // The equals() check above only catches identical strings. MySQL compares
@@ -461,6 +461,22 @@ public class BankingService {
             audit.recordDeniedAccess(caller, accountNumber);
             throw new AccountNotFoundException(GENERIC_NOT_FOUND);
         }
+    }
+
+    /**
+     * Money moves only at the account holder's request. ADMIN may read every
+     * account but is refused here with a 403, audited in its own transaction
+     * like any other denial, so an operator cannot deposit, withdraw or
+     * transfer on a customer's behalf.
+     */
+    private void requireAccountHolder(CurrentUser caller, String accountNumber, String operation)
+            throws AccountNotFoundException {
+        if (caller.isAdmin()) {
+            audit.recordDeniedMoneyMovement(caller, accountNumber, operation);
+            throw new AccessDeniedException(
+                    "Administrators cannot " + operation + ". Only the account holder can move money.");
+        }
+        requireOwnership(caller, accountNumber);
     }
 
     // =====================================================================

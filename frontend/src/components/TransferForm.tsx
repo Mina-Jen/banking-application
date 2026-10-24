@@ -2,12 +2,11 @@ import { useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Alert } from './Alert'
-import { AmountField } from './AmountField'
+import { Button } from './Button'
+import { MoneyInput } from './MoneyInput'
 import { ConfirmDialog } from './ConfirmDialog'
-import { Field } from './Field'
+import { Input } from './Input'
 import { MovementSummary } from './MovementSummary'
-import { Spinner } from './Spinner'
-import { buttonPrimary } from './ui'
 import type { Transaction } from '../api/types'
 import { useIdempotencyKey } from '../api/useIdempotencyKey'
 import { errorMessage } from '../api/errors'
@@ -29,6 +28,9 @@ interface TransferFormProps {
     idempotencyKey: string,
   ): Promise<Transaction>
   onDone(transaction: Transaction): void
+  /** A dialog host can move result messages into a page-level toast. */
+  feedback?: 'inline' | 'external'
+  onError?(message: string): void
 }
 
 /**
@@ -47,6 +49,8 @@ export function TransferForm({
   availableBalance,
   run,
   onDone,
+  feedback = 'inline',
+  onError,
 }: TransferFormProps) {
   const schema = useMemo(
     () => transferSchema(sourceAccountNumber, availableBalance),
@@ -110,7 +114,9 @@ export function TransferForm({
       onDone(transaction)
     } catch (cause) {
       // Keep `key` so a retry replays instead of transferring twice.
-      setError(errorMessage(cause))
+      const message = errorMessage(cause)
+      setError(message)
+      onError?.(message)
       setPending(null)
     } finally {
       setBusy(false)
@@ -120,10 +126,10 @@ export function TransferForm({
   return (
     <>
       <form onSubmit={handleSubmit(onValid)} noValidate className="space-y-4">
-        {error ? <Alert tone="error">{error}</Alert> : null}
-        {done ? <Alert tone="success">{done}</Alert> : null}
+        {feedback === 'inline' && error ? <Alert tone="error">{error}</Alert> : null}
+        {feedback === 'inline' && done ? <Alert tone="success">{done}</Alert> : null}
 
-        <Field
+        <Input
           label="From account"
           value={sourceAccountNumber}
           readOnly
@@ -135,7 +141,7 @@ export function TransferForm({
           control={control}
           name="destinationAccountNumber"
           render={({ field, fieldState }) => (
-            <Field
+            <Input
               label="To account number"
               value={field.value}
               inputRef={field.ref}
@@ -157,7 +163,7 @@ export function TransferForm({
           control={control}
           name="amount"
           render={({ field, fieldState }) => (
-            <AmountField
+            <MoneyInput
               label="Amount"
               value={field.value}
               inputRef={field.ref}
@@ -172,10 +178,9 @@ export function TransferForm({
           )}
         />
 
-        <button type="submit" className={buttonPrimary} disabled={busy}>
-          {busy ? <Spinner /> : null}
+        <Button type="submit" loading={busy}>
           {busy ? 'Transferring…' : 'Transfer'}
-        </button>
+        </Button>
       </form>
 
       <ConfirmDialog

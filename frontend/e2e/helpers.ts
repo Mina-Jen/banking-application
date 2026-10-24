@@ -69,7 +69,9 @@ export async function manageAccount(
   accountNumber: string,
   accountName: string,
 ): Promise<void> {
-  const row = page.locator('li', { hasText: accountNumber })
+  // The card face masks the number; its data attribute gives tests a stable
+  // machine-readable identity without exposing the number as visible text.
+  const row = page.locator(`li[data-account-number="${accountNumber}"]`)
   await row.getByRole('link', { name: 'Manage' }).click()
 
   await expect(page).toHaveURL(new RegExp(`/accounts/${accountNumber}$`))
