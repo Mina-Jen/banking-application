@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ============================================================================
-   CIICC Banking — design tokens
+   Sinag — design tokens
    Tailwind v4 is configured in CSS, so this file is the whole theme: every
    colour, font size and radius below becomes a utility (bg-action, text-ink-500,
    rounded-field…). Nothing here is a one-off; if a component needs a value that
@@ -29,13 +29,17 @@
   /* Depth — the four stops of the hero gradient, read left to right as money
      sinking into an account: cyan, blue, indigo, near-black. Bare, these stops
      are not safe for copy — white is 1.5:1 on depth-1 and 3.7:1 on depth-2 —
-     which is what the .hero-gradient scrim exists to fix. Never paint one of
+     which is what the .hero-gradient veil exists to fix. Never paint one of
      these stops directly and write on it; use .hero-gradient. */
   --color-depth-1: #5fe3ef;
   --color-depth-2: #2f83f0;
   --color-depth-3: #2b2470;
   --color-depth-4: #060b18;
-  --color-depth-scrim: #030814;
+  /* The veil that darkens the depth ramp. Indigo rather than a neutral black,
+     because a neutral shadow over cyan reads as muddy grey and a hue-preserving
+     one reads as water: this is what lets the ramp stay visible while still
+     clearing AA. */
+  --color-depth-veil: #080c2e;
 
   /* Ink — cool neutrals, kept at the values the app already used so adopting a
      token is a rename and not a re-render. */
@@ -86,10 +90,15 @@
   --color-warning-strong: #92400e;
   --color-warning-soft: #fffbeb;
 
-  /* Type — one self-hosted family, loaded in main.tsx from @fontsource. */
+  /* Type — two self-hosted roles: Manrope carries the prose and the display
+     headlines, a monospace carries the data. Money, account numbers and
+     references are read as digits, not as words, and a fixed advance is what
+     keeps a column of them from rippling. */
   --font-sans:
     "Manrope Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     Roboto, sans-serif;
+  --font-mono:
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* Display sizes carry their own leading and tracking so a headline cannot be
      assembled without the tight, heavy setting that makes the style work. */
@@ -105,6 +114,21 @@
   --text-display-xl: clamp(2.75rem, 1.5rem + 5.5vw, 4.5rem);
   --text-display-xl--line-height: 0.94;
   --text-display-xl--letter-spacing: -0.03em;
+
+  /* Elevation — three steps, tinted with the ink ramp instead of black so a
+     lifted card reads as glass and not as a grey smudge. `shadow-elevate-1` is
+     a card at rest, `-2` a card a control sits on, `-3` a sheet over the page. */
+  --shadow-elevate-1:
+    0 1px 2px rgb(15 23 42 / 0.04), 0 2px 6px rgb(15 23 42 / 0.05);
+  --shadow-elevate-2:
+    0 1px 2px rgb(15 23 42 / 0.05), 0 10px 24px -8px rgb(15 23 42 / 0.16);
+  --shadow-elevate-3:
+    0 2px 4px rgb(6 11 24 / 0.06), 0 28px 60px -24px rgb(6 11 24 / 0.4);
+
+  /* Radii — one card radius, deliberately softer than the old `rounded-xl`, and
+     a tighter one for anything inset in a card. */
+  --radius-card: 20px;
+  --radius-inset: 14px;
 }
 
 html {
@@ -133,51 +157,119 @@ body {
 }
 
 @layer components {
-  /* The signature surface: the depth gradient with a film grain over it and a
-     scrim that guarantees AA wherever copy is allowed to land.
+  /* The signature surface: the depth ramp, a cyan light-leak, banknote
+     engraving, a film grain, and a veil that guarantees AA wherever copy is
+     allowed to land.
 
-     Layout of the gradient is fixed — the light cyan band is the top ~22%, so
-     the scrim is only needed where the eye has already left the bright end.
+     Three layers, in this paint order (first listed is on top):
+       1. `--engrave` — two sets of hairline concentric rings at different
+          centres. Where they cross, the interference reads as the guilloché
+          printed on a banknote. It is the one decorative idea here, so it is
+          allowed to be the only one. The pitch is wide (9px and 13px) and the
+          rings faint: at 5px and 7px the two sets beat against each other and
+          against the pixel grid into a shimmer that reads as noise, especially
+          where they cross the bloom on the right.
+       2. `--bloom` — a light-leak of the brightest ramp stop, off-centre to the
+          right, so the surface has a light source instead of being an even slab.
+       3. `--ramp` — cyan into indigo into near-black.
      The grain is an inline SVG (no image file, nothing to fetch, nothing to
      cache-bust) and it is static: there is no animation here to opt out of. */
-  .hero-gradient {
+  .hero-gradient,
+  .hero-card {
+    --engrave: repeating-radial-gradient(
+        circle at 88% 30%,
+        transparent 0 9px,
+        color-mix(in srgb, var(--color-on-dark) 3%, transparent) 9px 10px
+      ),
+      repeating-radial-gradient(
+        circle at 12% 118%,
+        transparent 0 13px,
+        color-mix(in srgb, var(--color-on-dark) 3.2%, transparent) 13px 14px
+      );
+    --bloom: radial-gradient(
+      55% 75% at 88% 30%,
+      color-mix(in srgb, var(--color-depth-1) 46%, transparent) 0%,
+      transparent 100%
+    );
+    --ramp: linear-gradient(
+      100deg,
+      var(--color-depth-1) 0%,
+      var(--color-depth-2) 26%,
+      var(--color-depth-3) 62%,
+      var(--color-depth-4) 100%
+    );
+    /* Veil stops, widest to narrowest, following the ramp left to right. */
+    --veil-1: 76%;
+    --veil-2: 72%;
+    --veil-3: 55%;
+    --veil-4: 54%;
+
     position: relative;
     isolation: isolate;
     background-color: var(--color-depth-4);
-    background-image: linear-gradient(
-      155deg,
-      var(--color-depth-1) 0%,
-      var(--color-depth-2) 22%,
-      var(--color-depth-3) 56%,
-      var(--color-depth-4) 88%
-    );
+    background-image: var(--engrave), var(--bloom), var(--ramp);
     color: var(--color-on-dark);
+    /* One hairline of light along the top edge: the detail that separates a
+       plate from a flat fill. */
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-on-dark) 16%, transparent);
   }
 
-  /* Scrim under the copy. Its 66% floor is what makes the whole surface safe to
-     write on: white text is 8.6:1 even on the brightest cyan stop and 20:1 at
-     the bottom, and the muted on-dark token never drops below 5.8:1 — 5.2:1
-     after the grain's lightest speckle is blended in. Those are the measured
-     composites, so a layout change cannot push a headline into an inaccessible
-     band. */
-  .hero-gradient::before {
+  /* The account card is a copy surface from edge to edge — number, balance and
+     name all sit on it — so its ramp reaches the dark end sooner and its veil
+     never lifts above 30% transparency. */
+  .hero-card {
+    --ramp: linear-gradient(
+      100deg,
+      var(--color-depth-1) 0%,
+      var(--color-depth-2) 34%,
+      var(--color-depth-3) 70%,
+      var(--color-depth-4) 100%
+    );
+    --veil-1: 90%;
+    --veil-2: 86%;
+    --veil-3: 78%;
+    --veil-4: 70%;
+  }
+
+  /* Veil under the copy. It follows the same 100deg axis as the ramp, so its
+     alpha is a function of the ramp position rather than of the box: 76% where
+     the cyan stop is, lifting to 54% at the dark end. That is the floor at which
+     the cyan still reads as cyan — a few points more and the surface goes back to
+     the flat navy an even scrim produced — while the ramp stays safe to write on.
+
+     Measured, not estimated: white is 7.7:1 and the muted on-dark token 5.2:1 at
+     the worst pixel of the band, which is its brightest one. On the card face,
+     where copy can land anywhere, the floor is 11.2:1 and 7.5:1. Those composites
+     include the bloom at its peak, the grain's lightest speckle (overlay against
+     white at the layer's full 0.18), and both engraving sets landing on the same
+     pixel — and because the bloom is positioned and sized in percentages, its
+     peak alpha does not move when the box does.
+
+     One more number from the same model: a glyph painted as white at 55% alpha
+     over its own local background — the masked groups on the card face — is
+     still 5.2:1 there, against 12.2:1 for the full-white digits beside it.
+     Dimming a token that way is the loudest-quietest pair this surface allows. */
+  .hero-gradient::before,
+  .hero-card::before {
     content: "";
     position: absolute;
     inset: 0;
     z-index: -2;
     pointer-events: none;
     background-image: linear-gradient(
-      to bottom,
-      rgb(3 8 20 / 0.66) 0%,
-      rgb(3 8 20 / 0.72) 45%,
-      rgb(3 8 20 / 0.9) 100%
+      100deg,
+      color-mix(in srgb, var(--color-depth-veil) var(--veil-1), transparent) 0%,
+      color-mix(in srgb, var(--color-depth-veil) var(--veil-2), transparent) 34%,
+      color-mix(in srgb, var(--color-depth-veil) var(--veil-3), transparent) 62%,
+      color-mix(in srgb, var(--color-depth-veil) var(--veil-4), transparent) 100%
     );
   }
 
-  /* Grain above the scrim, below the content. Kept faint so it stays a texture:
+  /* Grain above the veil, below the content. Kept faint so it stays a texture:
      overlay at 0.18 moves the luminance of the dark end by well under a point,
      which is why the ratios above still hold with it on. */
-  .hero-gradient::after {
+  .hero-gradient::after,
+  .hero-card::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -186,13 +278,6 @@ body {
     opacity: 0.18;
     mix-blend-mode: overlay;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
-  }
-
-  /* A solid plate for anything that must sit high on the gradient — a masked
-     account number, a balance. Same near-black as the dark end, so it reads as
-     part of the surface instead of a card dropped on top of it. */
-  .hero-plate {
-    background-color: rgb(3 8 20 / 0.72);
   }
 
   /* Display style: uppercase, heaviest weight, balanced line breaks. Pair with

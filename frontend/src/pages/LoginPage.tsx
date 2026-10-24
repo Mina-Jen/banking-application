@@ -101,8 +101,9 @@ export function LoginPage() {
 
   return (
     <AuthLayout
-      title="Sign in"
-      subtitle="Use the login you registered with."
+      eyebrow="Sign in"
+      headline="BUKAS NA ABOT-KAMAY."
+      subtitle="Your accounts, balances and history in one place."
       footer={
         <>
           No account yet?{' '}

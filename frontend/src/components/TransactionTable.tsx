@@ -1,8 +1,8 @@
-import { formatPesos } from '../lib/money'
+import { formatPesos, totalAmounts } from '../lib/money'
 import type { Transaction } from '../api/types'
 import { EmptyState } from './EmptyState'
 import { IconArrowDownLeft, IconArrowUpRight, IconInbox } from './Icon'
-import { cx, eyebrow } from './ui'
+import { cx, divider, eyebrow, figure } from './ui'
 
 const INFLOW = new Set(['DEPOSIT', 'TRANSFER_IN'])
 const DAY_IN_MS = 86_400_000
@@ -33,13 +33,31 @@ export function TransactionTable({
   const groups = groupTransactions(transactions, now)
 
   return (
-    <div className="space-y-6">
-      {groups.map((group) => (
+    <div className="space-y-7">
+      {groups.map((group) => {
+        const credits = totalAmounts(
+          group.transactions
+            .filter((transaction) => INFLOW.has(transaction.type))
+            .map((transaction) => transaction.amount),
+        )
+        const debits = totalAmounts(
+          group.transactions
+            .filter((transaction) => !INFLOW.has(transaction.type))
+            .map((transaction) => transaction.amount),
+        )
+
+        return (
         <section key={group.key} aria-labelledby={`transactions-${group.key}`}>
-          <h3 id={`transactions-${group.key}`} className={eyebrow}>
-            {group.label}
-          </h3>
-          <ul className="mt-2 divide-y divide-line">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h3 id={`transactions-${group.key}`} className={eyebrow}>
+              {group.label}
+            </h3>
+            {/* The day's totals, the way a printed statement foots each page. */}
+            <p className={cx(figure, 'text-xs text-text-subtle')}>
+              In {formatPesos(credits)} · Out {formatPesos(debits)}
+            </p>
+          </div>
+          <ul className={cx(divider, 'mt-2')}>
             {group.transactions.map((transaction) => {
               const inflow = INFLOW.has(transaction.type)
               const DirectionIcon = inflow ? IconArrowDownLeft : IconArrowUpRight
@@ -47,7 +65,7 @@ export function TransactionTable({
               return (
                 <li
                   key={transaction.id}
-                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-4"
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-3.5 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:gap-5"
                 >
                   <span
                     className={cx(
@@ -63,8 +81,16 @@ export function TransactionTable({
                       {transactionTitle(transaction)}
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-text-subtle">
-                      {formatTime(transaction.createdAt)} · {transaction.reference}
+                      {formatTime(transaction.createdAt)}
+                      <span className={cx(figure, 'ml-2 text-[11px]')}>{transaction.reference}</span>
                     </span>
+                  </span>
+
+                  {/* The balance the transaction left behind: what a statement's
+                      third column is for, and the API already sends it. */}
+                  <span className={cx(figure, 'hidden text-xs text-text-subtle sm:block')}>
+                    <span className="sr-only">Balance after: </span>
+                    {formatPesos(transaction.balanceAfter)}
                   </span>
 
                   <span
@@ -81,7 +107,8 @@ export function TransactionTable({
             })}
           </ul>
         </section>
-      ))}
+        )
+      })}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 spring:
   application:
-    name: banking-backend
+    name: sinag
 
   datasource:
     # Defaults match a local XAMPP install, which runs MariaDB. Point

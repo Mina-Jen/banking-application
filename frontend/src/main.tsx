@@ -4,6 +4,12 @@ import App from './App'
 // Self-hosted brand face. Imported before the stylesheet so Tailwind's
 // --font-sans resolves against a family that is already declared.
 import '@fontsource-variable/manrope'
+// The data face: account numbers, references and columns of amounts. Three
+// weights because the statement uses 400 for a reference, 500 for an amount and
+// 600 for a day total, and nothing else.
+import '@fontsource/ibm-plex-mono/400.css'
+import '@fontsource/ibm-plex-mono/500.css'
+import '@fontsource/ibm-plex-mono/600.css'
 import './index.css'
 
 const container = document.getElementById('root')

@@ -3,7 +3,14 @@ import { Link } from 'react-router-dom'
 import { formatPesos } from '../lib/money'
 import { IconCheck, IconCopy } from './Icon'
 import { Logo } from './Logo'
-import { buttonClasses, cx, eyebrowOnDark, focusRingOnDark } from './ui'
+import {
+  accountNumber as accountNumberStyle,
+  buttonClasses,
+  cx,
+  eyebrowOnDark,
+  focusRingOnDark,
+  moneyDisplay,
+} from './ui'
 
 interface GradientAccountCardProps {
   /** Full account number. It is masked on screen and only ever leaves through the copy button. */
@@ -18,9 +25,19 @@ interface GradientAccountCardProps {
   className?: string
 }
 
-/** Last four digits, the convention every card face follows. */
-function mask(accountNumber: string): string {
-  return `•••• ${accountNumber.slice(-4)}`
+/**
+ * Last four digits, the convention every card face follows. The masked groups
+ * are printed at 55% white — 5.2:1 on this surface, against 12.2:1 for the
+ * digits — so the eye lands on the four it can read instead of on eight marks
+ * of equal weight.
+ */
+function mask(accountNumber: string) {
+  return (
+    <>
+      <span className="text-on-dark/55">•••• </span>
+      {accountNumber.slice(-4)}
+    </>
+  )
 }
 
 /**
@@ -67,24 +84,24 @@ export function GradientAccountCard({
   return (
     <section
       className={cx(
-        'hero-gradient relative isolate overflow-hidden rounded-2xl p-5 sm:p-6',
+        'hero-card relative isolate overflow-hidden rounded-card p-5 shadow-elevate-2 sm:p-6',
         className,
       )}
       aria-label={`${accountName}, ${kind} account ending ${accountNumber.slice(-4)}`}
     >
       <div className="flex items-start justify-between gap-4">
-        <p className={eyebrowOnDark}>{`CIICC · ${kind}`}</p>
-        <Logo size={26} tone="onDark" />
+        <p className={eyebrowOnDark}>{`Sinag · ${kind}`}</p>
+        <Logo size={26} variant="dark" />
       </div>
 
-      <p className="mt-9 text-display-md font-bold tabular-nums tracking-[0.14em] text-on-dark">
+      <p className={cx(accountNumberStyle, 'mt-9 text-display-md font-bold text-on-dark')}>
         {status === 'unavailable' ? accountNumber : mask(accountNumber)}
       </p>
 
       <div className="mt-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
           <p className={eyebrowOnDark}>Balance</p>
-          <p className="mt-1 text-display-md font-bold tabular-nums text-on-dark">
+          <p className={cx(moneyDisplay, 'mt-1 text-display-md font-bold text-on-dark')}>
             {balance ? formatPesos(balance) : '—'}
           </p>
           <p className="mt-2 truncate text-sm text-on-dark-muted">{accountName}</p>

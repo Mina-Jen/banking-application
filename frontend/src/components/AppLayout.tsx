@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { Button } from './Button'
 import { LogoWordmark } from './Logo'
+import { SiteFooter } from './SiteFooter'
 import { cx, focusRing } from './ui'
 
 /**
@@ -33,7 +34,7 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-line bg-surface">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-3 sm:px-6">
           <Link
             to="/"
@@ -77,6 +78,8 @@ export function AppLayout() {
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <Outlet />
       </main>
+
+      <SiteFooter className="mx-auto w-full max-w-6xl px-4 pb-8 sm:px-6" />
     </div>
   )
 }

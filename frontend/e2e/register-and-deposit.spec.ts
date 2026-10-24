@@ -14,7 +14,7 @@ test('a new user registers, opens an account, and deposits into it', async ({ pa
   })
   await manageAccount(page, accountNumber, 'E2E Deposit Account')
 
-  await expect(page.getByText('0 transactions, oldest first')).toBeVisible()
+  await expect(page.getByText('0 transactions, newest first')).toBeVisible()
 
   // Typing an amount only opens the dialog; no money moves before Confirm.
   await page.getByLabel('Amount to deposit', { exact: true }).fill('1250.75')
@@ -30,5 +30,5 @@ test('a new user registers, opens an account, and deposits into it', async ({ pa
   // The receipt carries the backend's reference and the new balance.
   await expect(page.getByText(/recorded\. Reference TXN-/)).toBeVisible()
   await expect(page.getByText('New balance ₱1,250.75.')).toBeVisible()
-  await expect(page.getByText('1 transaction, oldest first')).toBeVisible()
+  await expect(page.getByText('1 transaction, newest first')).toBeVisible()
 })

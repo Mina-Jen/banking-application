@@ -251,7 +251,10 @@ export function AdminDashboardPage() {
         </dl>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      {/* `items-start`: the ledger card grows when the check fails or lists
+          discrepancies, and a stretched anomaly card turns that growth into a
+          void inside the short card. */}
+      <div className="grid items-start gap-6 lg:grid-cols-3">
         <section className={cx(card, 'lg:col-span-2')} aria-labelledby="ledger-heading">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>

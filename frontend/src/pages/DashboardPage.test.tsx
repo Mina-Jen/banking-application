@@ -204,7 +204,8 @@ describe('DashboardPage money actions', () => {
     accounts.mockResolvedValueOnce(pageOf([account('200001', '1500.00')]))
     renderDashboard()
 
-    expect(await screen.findByText('•••• 0001')).toBeInTheDocument()
+    const masked = await screen.findByText('0001')
+    expect(masked).toHaveTextContent('•••• 0001')
     expect(screen.queryByText('200001')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy number' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Manage' })).toHaveAttribute('href', '/accounts/200001')

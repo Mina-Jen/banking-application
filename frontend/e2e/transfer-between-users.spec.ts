@@ -25,6 +25,8 @@ test('a transfer moves money from one customer to another', async ({ browser }) 
 
     await manageAccount(alice, aliceNumber, 'Alice E2E')
 
+    // The three money actions share one card; Transfer is a tab, not a form.
+    await alice.getByRole('tab', { name: 'Transfer' }).click()
     await alice.getByLabel('To account number', { exact: true }).fill(bobNumber)
     await alice.getByLabel('Amount', { exact: true }).fill('30')
     await alice.getByRole('button', { name: 'Transfer', exact: true }).click()
@@ -41,7 +43,9 @@ test('a transfer moves money from one customer to another', async ({ browser }) 
     // Bob sees the money arrive in his own session. His dashboard re-reads
     // GET /api/accounts, which only ever returns accounts he owns.
     await bob.goto('/')
-    const bobRow = bob.locator('li', { hasText: bobNumber })
+    // Bob's row masks the number, so identify it by the machine-readable
+    // attribute the card carries rather than by visible digits.
+    const bobRow = bob.locator(`li[data-account-number="${bobNumber}"]`)
     await expect(bobRow).toContainText('Bob E2E')
     await expect(bobRow.getByText('₱55.00')).toBeVisible()
   } finally {

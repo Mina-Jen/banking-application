@@ -1,4 +1,4 @@
-# CIICC Banking — design system
+# Sinag — design system
 
 The visual rules for the React frontend: what colours exist, what they mean, how
 type is set, and which component to reach for. Two files implement it:
@@ -10,10 +10,10 @@ type is set, and which component to reach for. Two files implement it:
 
 There is no `tailwind.config.*` file. Do not add one.
 
-**Scope.** This pass built the tokens and the primitives. The pages still render
-the older layouts on top of them — they pick up the palette and type because
-they consume the same class strings, but they have not been re-laid-out yet.
-See [Migrating the pages](#migrating-the-pages).
+**Scope.** The tokens, the primitives and the page layouts are all on this
+system: the dashboard, the account statement, the admin overview, the review
+queue and the two auth screens. What a page may not do is introduce a value that
+is not a token — see [The pages today](#6-the-pages-today).
 
 ---
 
@@ -33,11 +33,15 @@ near-black. These four stops exist to be *gradient stops*.
 | `--color-depth-2` | `#2f83f0` |
 | `--color-depth-3` | `#2b2470` |
 | `--color-depth-4` | `#060b18` |
-| `--color-depth-scrim` | `#030814` |
+| `--color-depth-veil` | `#080c2e` |
+
+The veil is indigo, not black. A neutral shadow over cyan reads as muddy grey;
+a hue-preserving one reads as water. That single choice is what lets the ramp
+stay visible at the alphas the next section lists.
 
 **Never paint a depth stop and write on it.** Bare, white text is 1.53:1 on
-`depth-1` and 3.73:1 on `depth-2` — both fail. Use `.hero-gradient`, which adds
-the scrim described below.
+`depth-1` and 3.73:1 on `depth-2` — both fail. Use `.hero-gradient` (or
+`.hero-card`, [below](#2-the-hero-surface)), which adds the veil.
 
 ### Brand — the same ramp as a usable scale
 
@@ -85,12 +89,12 @@ tint.
 | **warning** `#b45309` / `#92400e` / `#fffbeb` | 5.02 | 5.02 | 6.84 (`-strong`) |
 
 Every pair above clears WCAG 2.2 AA (4.5:1 for body text). Measured with the
-relative-luminance formula, not estimated — see [Verifying](#verifying).
+relative-luminance formula, not estimated — see [Verifying](#7-verifying).
 
 `danger-on-dark` `#fecaca` is error text on the gradient, where `danger` is about
-2:1. Measured against the brightest rendered pixel beside the auth form fields
-(`rgb(17,40,79)`): error text 10.08, muted hint 9.82, white label 14.58, and the
-half-white field outline 4.75 (non-text, needs 3:1).
+2:1. Measured against the brightest rendered pixel of the auth form column
+(`rgb(36,53,90)`): error text 8.39, muted hint 8.17, white label 12.14, and the
+half-white field outline 3.91 (non-text, needs 3:1).
 
 ### Light-surface text
 
@@ -107,50 +111,78 @@ half-white field outline 4.75 (non-text, needs 3:1).
 ## 2. The hero surface
 
 `.hero-gradient` is the one signature element and the only place dark-on-light
-inversion is allowed. Three layers, all in CSS, nothing fetched:
+inversion is allowed. Four layers, all in CSS, nothing fetched. Bottom to top:
 
 ```
-content            ← text lives here, above both pseudo-elements
-::after  grain     ← inline SVG feTurbulence, opacity .18, mix-blend-mode overlay
-::before scrim     ← vertical gradient, 66% → 72% → 90% of #030814
-background         ← linear-gradient(155deg, depth-1 → depth-2 22% → depth-3 56% → depth-4 88%)
+background   ramp    ← linear-gradient(100deg, depth-1 → depth-2 26% → depth-3 62% → depth-4)
+             bloom   ← radial light-leak of depth-1, 55%×75% at 88% 30%, 46% at its peak
+             engrave ← two sets of hairline concentric rings (9px and 13px pitch, ~3% white)
+::before     veil    ← linear-gradient(100deg) of #080c2e at 76% → 72% → 55% → 54%
+::after      grain   ← inline SVG feTurbulence, opacity .18, mix-blend-mode overlay
+content      text lives here, above every layer
 ```
 
-The **scrim is the accessibility device**, not a mood adjustment. Its 66% floor
-is what makes the whole surface safe to write on:
+The engraving is the guilloché on a banknote: where the two ring sets cross, the
+interference is the pattern. It is deliberately the only decorative idea on the
+surface, and its pitch is wide because at 5px and 7px the sets beat against each
+other and against the pixel grid into something that reads as noise.
 
-| Position on the gradient | White text | `on-dark-muted` | With the grain's lightest speckle: white / muted |
+The **veil is the accessibility device**, not a mood adjustment. Its alpha tracks
+the ramp position rather than the box, so it is thickest where the cyan is and
+lifts toward the dark end. That floor is what makes the whole surface safe to
+write on:
+
+| Surface | White text | `on-dark-muted` | Where the worst pixel is |
 | --- | --- | --- | --- |
-| top (`depth-1` cyan) | 8.62 | 5.80 | 7.66 / 5.16 |
-| 22% (`depth-2`) | 12.94 | 8.71 | 11.98 / 8.07 |
-| 56% (`depth-3`) | 18.77 | 12.64 | 18.45 / 12.43 |
-| bottom (`depth-4`) | 20.02 | 13.49 | 19.91 / 13.41 |
+| `.hero-gradient` (the band, the auth page) | 7.71 | 5.19 | its brightest point, top-left |
+| `.hero-card` (the account card face) | 11.18 | 7.53 | over the bloom, right of centre |
 
-So a layout change cannot push a headline into an inaccessible band — the worst
-case anywhere on the surface is 5.16, and that is small secondary text under a
-pessimistic grain assumption.
+`.hero-card` is the same surface retuned for a face that carries copy edge to
+edge: the ramp reaches its dark stop sooner (0% → 34% → 70% → 100%) and the veil
+never lifts above 70%. Both surfaces also carry one hairline of light along the
+top edge — `inset 0 1px 0` at 16% white — which is the detail that separates a
+plate from a flat fill.
+
+Every number above is composited, not sampled from a swatch: it includes the
+bloom at its peak, the grain's lightest speckle, and both engraving sets landing
+on the same pixel. Because the bloom is sized in percentages, its peak alpha does
+not move when the box is resized, so a layout change cannot quietly break a
+ratio.
 
 Rules:
 
-- **Text goes on the dark half.** The scrim guarantees it is safe anywhere, but
-  the design intent is white copy landing on indigo-to-black, with cyan reserved
-  for the band you *don't* write on.
+- **Copy may land anywhere on either surface.** The cyan end is still the band
+  you *shouldn't* write on — the veil makes it survivable, the design still
+  prefers the dark two-thirds.
 - The grain is an inline `data:` SVG — no image file, nothing to cache-bust — and
   it is **static**. There is no animated texture to opt out of.
-- `z-index: -1 / -2` with `isolation: isolate` keeps both layers under the
-  content and inside the element, so a hero never paints over its neighbours.
-- `.hero-plate` (`#030814` at 72%) is available for a solid panel that should
-  read as part of the surface rather than a card dropped on top of it.
+- `z-index: -1 / -2` with `isolation: isolate` keeps both pseudo-elements under
+  the content and inside the element, so a hero never paints over its neighbours.
+- Dimming is available as a device: white at 55% alpha over its own local
+  background is still 5.16:1 on the card face, against 12.23:1 for the full-white
+  digits beside it. That is how the masked groups on `GradientAccountCard` are
+  set — quieter than the number, never unreadable.
 
 ---
 
 ## 3. Typography
 
-One self-hosted family: **Manrope Variable**, from `@fontsource-variable/manrope`,
-imported in [`main.tsx`](../frontend/src/main.tsx) before `index.css`. The build
-emits five subset files (latin, latin-ext, greek, cyrillic, vietnamese), each on
-the 200–800 variable axis with `font-display: swap`. The peso sign is in the
-latin-ext subset, so `₱` renders from Manrope rather than falling back mid-string.
+Two self-hosted roles, both imported in
+[`main.tsx`](../frontend/src/main.tsx) before `index.css`:
+
+- **Manrope Variable** (`@fontsource-variable/manrope`) carries the prose and the
+  display headlines. The build emits five subset files (latin, latin-ext, greek,
+  cyrillic, vietnamese), each on the 200–800 variable axis with
+  `font-display: swap`. The peso sign is in the latin-ext subset, so `₱` renders
+  from Manrope rather than falling back mid-string.
+- **IBM Plex Mono** (`@fontsource/ibm-plex-mono`, weights 400/500/600) carries
+  the data. A reference, a timestamp and a column of amounts are read digit by
+  digit, and only a fixed advance keeps such a column from rippling. It is a
+  runtime dependency, not a dev one: the font ships with the app.
+
+`--font-mono` is the token; `ui.ts` exports `figure = 'font-mono tabular-nums'`
+so a data cell is one class pair, and `accountNumber` adds the tracking a
+hand-typed number needs.
 
 ### Display scale
 
@@ -180,6 +212,13 @@ numbers add `accountNumber` for the extra tracking. Verified in the browser: ten
 `1`s and ten `0`s measure identically (198.41px at 32px) with the utility and
 differ by 70px without it.
 
+A money figure at display size uses `moneyDisplay` instead, and the reason is a
+glyph: Manrope's `₱` has no right side bearing — its ink runs the full width of
+its advance — so at headline sizes the sign touches the first digit and the two
+read as one character. `moneyDisplay` is `tabular-nums tracking-[0.05em]`; that
+much space between digits is wrong in a table, which is why it is a separate
+token and only the page's big numbers use it.
+
 `.tabular-money` (unlayered, in `index.css`) additionally forces `text-align:
 right` for table columns. It is unlayered on purpose so it beats a stray
 `text-left`. New components should use Tailwind's own `tabular-nums` and set
@@ -191,14 +230,19 @@ Nothing in this system formats a number: `formatPesos` regroups a string.
 
 ---
 
-## 4. Space, radius, motion
+## 4. Space, radius, elevation, motion
 
 - **Spacing** is Tailwind's 4px scale. Use `gap-*` and `space-y-*` over margins
   on children.
-- **Radius**: `rounded-lg` for fields and sheets, `rounded-xl` for cards,
-  `rounded-2xl` for the account card, `rounded-full` for every button. Buttons
-  are pills in both directions — that is what distinguishes an action from a
-  surface at a glance.
+- **Radius**: `rounded-card` (20px) for every card and hero surface,
+  `rounded-inset` (14px) for anything set into one, `rounded-lg` for fields and
+  sheets, `rounded-full` for every button and pill. Buttons are pills in both
+  directions — that is what distinguishes an action from a surface at a glance.
+- **Elevation** is three steps, tinted with the ink ramp rather than black so a
+  lifted card reads as glass and not as a grey smudge:
+  `shadow-elevate-1` is a card at rest, `-2` a card a control sits on or one that
+  overlaps the hero, `-3` a sheet over the page. The `card` and `cardRaised`
+  exports in `ui.ts` already pick the right step.
 - **Tap targets** are ≥44px (`min-h-11`) on every button and input, at every
   breakpoint. `min-h-9` is allowed only for `size="sm"`, which is for text
   actions inside a card header, not for a primary control.
@@ -225,14 +269,14 @@ is tested; the behaviours worth knowing are in its test file.
 | `MoneyInput` | Any amount. ₱ prefix, live formatted preview, `type="text"` + `inputMode="decimal"` | `type="number"` — it returns a JS number in some browsers and accepts `1e5` |
 | `Card` | A titled surface with optional actions | An untitled box; put `card` on the element you already have |
 | `GradientAccountCard` | An account as an object: masked number, copy button, balance | Showing a full account number on screen — the copy button is the only way it leaves, and the reveal is the clipboard-denied fallback |
-| `ActionTile` | A tappable square on the money-actions row | A tile whose accessible name is the glyph; the icon is `aria-hidden` and `aria-label` carries the verb |
+| `SegmentedPanels` | One panel with several mutually exclusive views: the money forms on the account page | Three tall cards of equal height holding one short form each. It is the ARIA tabs pattern, so the segments are named by what they show |
 | `Sheet` | A modal layer. `center` for a decision, `bottom` for a choice | `<dialog>` — jsdom has no `showModal()`, so the behaviour would be untested. `ConfirmDialog` is the money-decision wrapper |
 | `Toast` | A one-line result over the page | Auto-dismissing an error: `duration` defaults to 0 for `tone="error"` because the message carries the fix |
 | `Alert` | A message that belongs to the page, not the viewport | `Toast` for something the user must act on |
 | `Skeleton` | Holding the shape of loading content | Showing it alone — pair it with a visible "Loading" message |
 | `EmptyState` / `EmptyLine` | A screen or a list slot with nothing in it | A vague "No data"; say what is missing and offer the control that fixes it |
 | `Icon` | Any glyph. Twelve stroked icons on a 24 grid | An emoji, or a second icon set |
-| `Logo` / `LogoWordmark` | The CIICC mark — an open ring with a transfer arrow leaving through the gap | An image file; it is a path, so it recolours with the text |
+| `Logo` / `LogoWordmark` | The Sinag mark — a sun rising over a horizon, five rounded rays; a path, so it recolours with the text | An image file; a separate raster logo for headers |
 
 ### Accessibility rules already baked in
 
@@ -250,6 +294,12 @@ Do not re-solve these per page:
   refuses all of it while `busy`, and returns focus to the trigger.
 - The modal's first stop is **Cancel**, not Confirm — a stray Enter presses must
   not move money.
+- `SegmentedPanels` is the ARIA tabs pattern, including the part a screenshot
+  cannot show: only the selected segment is in the tab order, and Arrow / Home /
+  End move the selection and the focus together.
+- A control's accessible name is the verb on it. The money rail's pills carry
+  `aria-label` of "Deposit" / "Withdraw" / "Transfer" with the icon
+  `aria-hidden`, so nothing announces as "DepositInto savings".
 
 ### One Tailwind trap worth knowing
 
@@ -268,21 +318,33 @@ so there is nothing to suppress.
 
 ---
 
-## 6. Migrating the pages
+## 6. The pages today
 
-The primitives are live and tested. When re-laying out a page:
+Every screen is laid out on the primitives rather than beside them. What each one
+owes to the system:
 
-1. Start with the hero. `AuthLayout` is the auth pattern — full-height
-   `.hero-gradient`, a brand panel and dark form panel on desktop, and only the
-   form on smaller screens. Its form sits on the gradient rather than in a
-   sheet, so pair `Input tone="onDark"` with a white `Button variant="onDark"`.
-2. Swap the account list for `GradientAccountCard` and the action row for
-   `ActionTile tone="onDark"`.
-3. Wrap card content in `Card` rather than repeating `cx(card, …)`.
-4. Replace inline `<button className={buttonPrimary}>` with `<Button>` so
-   `loading` is one prop instead of a conditional spinner at the call site.
-5. Keep the data fetching, forms, routes and validation exactly as they are. This
-   is a visual pass; every existing test must still pass unchanged.
+- **Auth** (`AuthLayout`) is the full-height `.hero-gradient`: brand panel and
+  form panel from `lg` up, only the form below it. The form sits on the gradient
+  rather than in a sheet, so `Input tone="onDark"` pairs with a white
+  `Button variant="onDark"`.
+- **Customer dashboard** is one hero band — eyebrow, headline, total, and the
+  three money verbs as `railAction` pills on the bright end — over a grid of
+  `GradientAccountCard`s. The band is a band, not a screen: it is `rounded-card`
+  inside the page container, so it has the same edges as everything under it.
+- **Account page** is a hero band, then the statement pulled up over it
+  (`-mt-12`, `cardRaised`), then one `Move money` card whose three forms live in
+  a `SegmentedPanels`. A form column is capped at `max-w-2xl`: a money field that
+  stretches to a 1440px line is a field people misread.
+- **Admin overview and review queue** use the same band and the same cards. They
+  inherit the tokens rather than repeating them, and the grid that holds the two
+  summary cards is `items-start` so a short card is not stretched into a void by
+  a tall neighbour.
+- **Transactions** read as a statement: a day header with that day's in and out
+  totals, mono references, and a balance-after column.
+
+The rule for the next page: take the layout from the nearest of the above, and if
+a value you need is not a token, add the token to `index.css` rather than typing
+the value.
 
 ---
 
@@ -297,14 +359,22 @@ npm run build
 ```
 
 Contrast is checked with the WCAG 2.2 relative-luminance formula against the
-composited background (gradient stop → scrim alpha → grain blend), not against a
-swatch. The ratios in this document came from a throwaway script doing that
-arithmetic; re-run it whenever a token or the scrim floor changes.
+composited background (ramp stop → bloom → engraving → veil alpha → grain
+blend → any panel colour painted over it), not against a swatch. The ratios in
+this document came from a throwaway script doing that arithmetic; re-run it
+whenever a token or the veil floor changes, and re-check the two surfaces
+separately — `.hero-card` and the auth form column have different floors because
+they paint different layers over the same ramp.
 
-Two things can only be checked in a browser, and both have been:
+Three things can only be checked in a browser, and all three have been, against
+screenshots at 1440px and 390px:
 
 - **Tabular figures** — measure ten `1`s against ten `0`s on an element with
   `tabular-nums`; equal widths mean the feature is actually applied by the font.
 - **Focus visibility** — Tab to a control and read `outline-style`, `outline-width`
   and `outline-color` from the computed style. Programmatic `.focus()` does not
   trigger `:focus-visible`, so it must be a real key press.
+- **The engraving at rest** — the ring sets are a real moiré risk against a
+  device pixel grid. If a screenshot shows shimmer rather than line work, widen
+  the pitch before lowering the alpha; a faint dense pattern is still a dense
+  pattern.

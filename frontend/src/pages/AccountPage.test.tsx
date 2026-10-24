@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -103,7 +103,7 @@ describe('AccountPage states', () => {
     expect(screen.queryByRole('heading', { name: 'Deposit' })).not.toBeInTheDocument()
   })
 
-  it('renders the balance, the three money forms, and an empty history', async () => {
+  it('renders the balance, the money panel, and an empty history', async () => {
     getAccount.mockResolvedValue(ACCOUNT)
     transactionHistory.mockResolvedValue({ transactions: [], page: 0, size: 10, totalElements: 0, totalPages: 0 })
 
@@ -113,18 +113,44 @@ describe('AccountPage states', () => {
     expect(screen.getByText('200001')).toBeInTheDocument()
     expect(screen.getByText('₱1,000.00')).toBeInTheDocument()
 
-    expect(screen.getByRole('heading', { name: 'Deposit' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Withdraw' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Transfer' })).toBeInTheDocument()
+    // One panel with three segments: the deposit form is the one you land on.
+    const tablist = screen.getByRole('tablist', { name: 'Money action' })
+    expect(within(tablist).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Deposit',
+      'Withdraw',
+      'Transfer',
+    ])
+    expect(within(tablist).getByRole('tab', { name: 'Deposit' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByLabelText('Amount to deposit')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Amount to withdraw')).not.toBeInTheDocument()
 
     expect(await screen.findByText('0 transactions, newest first')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'No transactions yet' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Older' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Transaction history' }).closest('section')).toHaveClass(
       '-mt-12',
-      'rounded-2xl',
+      'rounded-card',
       'bg-surface',
     )
+  })
+
+  it('switches the money panel to the segment you choose', async () => {
+    getAccount.mockResolvedValue(ACCOUNT)
+    transactionHistory.mockResolvedValue({ transactions: [], page: 0, size: 10, totalElements: 0, totalPages: 0 })
+
+    renderAccountPage()
+    await screen.findByLabelText('Amount to deposit')
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Withdraw' }))
+    expect(await screen.findByLabelText('Amount to withdraw')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Amount to deposit')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Transfer' }))
+    expect(await screen.findByLabelText('To account number')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Amount to withdraw')).not.toBeInTheDocument()
   })
 
   it('opens the most recent page and pages backwards through history', async () => {
@@ -190,9 +216,9 @@ describe('AccountPage states', () => {
 
     expect(await screen.findByRole('heading', { name: 'Read-only view' })).toBeInTheDocument()
     expect(screen.getByText(/Administrators can see every account but cannot deposit/)).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Deposit' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Withdraw' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Transfer' })).not.toBeInTheDocument()
+    // No panel at all: the backend refuses an admin's money movement, so the
+    // control would only produce a 403.
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Transaction history' })).toBeInTheDocument()
   })
 })
