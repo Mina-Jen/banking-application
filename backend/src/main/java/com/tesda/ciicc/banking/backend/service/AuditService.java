@@ -72,6 +72,12 @@ public class AuditService {
                 "Caller role " + caller.role() + " does not own this account.");
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordDeniedMoneyMovement(CurrentUser caller, String accountNumber, String operation) {
+        record(caller.username(), ACCESS_DENIED, accountNumber,
+                "Caller role " + caller.role() + " may not " + operation + "; only the account holder moves money.");
+    }
+
     /**
      * The caller's IP address, or null outside a web request (e.g. in plain
      * unit tests). Reads the current request instead of passing the address

@@ -36,6 +36,36 @@ export type Transaction = Defined<components['schemas']['TransactionResponse']>
 export type TransactionPage = Defined<components['schemas']['TransactionPageResponse']>
 export type RegisteredUser = Defined<components['schemas']['RegisterResponse']>
 export type TokenPair = Defined<components['schemas']['TokenResponse']>
+export type ReconciliationReport = Defined<components['schemas']['ReconciliationResponse']>
+export type Discrepancy = Defined<components['schemas']['DiscrepancyResponse']>
+
+/**
+ * The backend sends explicit nulls for the review fields of an OPEN flag, so
+ * they are nullable here even though `Defined` would call them strings. `status`
+ * and `rule` are Java enums, narrowed to their real values.
+ */
+export type AnomalyFlag = Omit<
+  Defined<components['schemas']['AnomalyFlagResponse']>,
+  'reviewedAt' | 'reviewedBy' | 'status' | 'rule'
+> & {
+  status: AnomalyStatus
+  rule: AnomalyRule
+  reviewedAt: string | null
+  reviewedBy: string | null
+}
+
+export type AnomalyFlagPage = Omit<
+  Defined<components['schemas']['AnomalyFlagPageResponse']>,
+  'flags'
+> & {
+  flags: AnomalyFlag[]
+}
 
 /** Transaction types as the backend names them in TransactionType.java. */
 export type TransactionType = 'DEPOSIT' | 'WITHDRAW' | 'TRANSFER_OUT' | 'TRANSFER_IN'
+
+/** Anomaly rules as the backend names them in AnomalyRule.java. */
+export type AnomalyRule = 'UNUSUAL_AMOUNT' | 'VELOCITY'
+
+/** Lifecycle of an anomaly flag: an ADMIN closes an OPEN one once, for good. */
+export type AnomalyStatus = 'OPEN' | 'REVIEWED' | 'DISMISSED'

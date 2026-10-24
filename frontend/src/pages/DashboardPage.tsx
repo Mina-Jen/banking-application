@@ -1,43 +1,37 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AccountActionSheet, type AccountAction } from '../components/AccountActionSheet'
+import { ActionTile } from '../components/ActionTile'
 import { Alert } from '../components/Alert'
-import { Field } from '../components/Field'
+import { Button } from '../components/Button'
+import { EmptyState } from '../components/EmptyState'
+import { GradientAccountCard } from '../components/GradientAccountCard'
+import { IconCard, IconDeposit, IconRefresh, IconTransfer, IconWithdraw } from '../components/Icon'
 import { OpenAccountForm } from '../components/OpenAccountForm'
-import { Spinner } from '../components/Spinner'
-import { buttonPrimary, buttonSecondary, card, cx } from '../components/ui'
+import { Sheet } from '../components/Sheet'
+import { Skeleton } from '../components/Skeleton'
+import { Toast } from '../components/Toast'
+import { card, cx, display, eyebrowOnDark } from '../components/ui'
 import { bankingApi, type Account } from '../api/banking'
+import type { Transaction } from '../api/types'
 import { errorMessage } from '../api/errors'
-import { useAuth } from '../auth/AuthContext'
 import { formatPesos, totalAmounts } from '../lib/money'
-import { MAX_ACCOUNT_NUMBER_LENGTH, accountNumberError } from '../lib/validation'
 
-/**
- * The largest page the backend will return (it answers 422 above 100). Asking
- * for the maximum keeps every account a caller owns on one screen, so the
- * dashboard needs no pager for the handful of accounts a person actually has.
- */
+/** The backend rejects list sizes above 100. */
 const LIST_PAGE_SIZE = 100
 
-export function DashboardPage() {
-  const { isAdmin } = useAuth()
-  const navigate = useNavigate()
+type ToastState = { tone: 'success' | 'error'; message: string }
 
+export function DashboardPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [totalElements, setTotalElements] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [failure, setFailure] = useState<string | null>(null)
   const [opening, setOpening] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [action, setAction] = useState<AccountAction | null>(null)
+  const [toast, setToast] = useState<ToastState | null>(null)
 
-  const [lookup, setLookup] = useState('')
-  const [lookupBusy, setLookupBusy] = useState(false)
-  const [lookupError, setLookupError] = useState<string | null>(null)
-
-  /**
-   * Guards against an out-of-order response overwriting a newer one: two
-   * refreshes in flight can finish in either order.
-   */
+  /** Guards against an older refresh replacing a newer response. */
   const requestSequence = useRef(0)
 
   const loadAccounts = useCallback(async () => {
@@ -69,142 +63,155 @@ export function DashboardPage() {
   }, [loadAccounts])
 
   const total = totalAmounts(accounts.map((account) => account.balance))
+  const actionsDisabled = loading || accounts.length === 0
 
   function onCreated(account: Account) {
     setOpening(false)
-    setNotice(`Account ${account.accountNumber} opened with ${formatPesos(account.balance)}.`)
+    setToast({
+      tone: 'success',
+      message: `Account ${account.accountNumber} opened with ${formatPesos(account.balance)}.`,
+    })
     void loadAccounts()
   }
 
-  async function onLookup(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const accountNumber = lookup.trim()
-    if (accountNumberError(accountNumber) !== null || lookupBusy) {
-      return
-    }
-
-    setLookupBusy(true)
-    setLookupError(null)
-    try {
-      await bankingApi.getAccount(accountNumber)
-      navigate(`/accounts/${encodeURIComponent(accountNumber)}`)
-    } catch (cause) {
-      setLookupError(errorMessage(cause))
-      setLookup('')
-    } finally {
-      setLookupBusy(false)
-    }
+  function onMoneyMoved(movedBy: AccountAction, transaction: Transaction) {
+    const message =
+      movedBy === 'transfer'
+        ? `${formatPesos(transaction.amount)} sent to ${transaction.referenceAccount ?? 'the recipient'}. Reference ${transaction.reference}. New balance ${formatPesos(transaction.balanceAfter)}.`
+        : `${formatPesos(transaction.amount)} recorded. Reference ${transaction.reference}. New balance ${formatPesos(transaction.balanceAfter)}.`
+    setAction(null)
+    setToast({ tone: 'success', message })
+    void loadAccounts()
   }
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            {isAdmin ? 'All accounts' : 'Your accounts'}
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Balances are read live from the backend on every visit.
-          </p>
+      <section className="hero-gradient overflow-hidden rounded-2xl p-5 shadow-lg sm:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div>
+            <p className={eyebrowOnDark}>Your portfolio</p>
+            <h1 className={cx('mt-2 text-display-md text-on-dark sm:text-display-lg', display)}>
+              Your accounts
+            </h1>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="onDarkOutline"
+              size="sm"
+              onClick={() => void loadAccounts()}
+              disabled={loading}
+            >
+              <IconRefresh className="h-4 w-4" />
+              Refresh
+            </Button>
+            <Button variant="onDark" size="sm" onClick={() => setOpening(true)}>
+              Open an account
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className={buttonSecondary}
-            onClick={() => {
-              setNotice(null)
-              void loadAccounts()
-            }}
-          >
-            Refresh
-          </button>
-          <button
-            type="button"
-            className={buttonPrimary}
-            onClick={() => {
-              setNotice(null)
-              setOpening((open) => !open)
-            }}
-            aria-expanded={opening}
-          >
-            {opening ? 'Cancel' : 'Open an account'}
-          </button>
+
+        <div className="mt-10">
+          <p className={eyebrowOnDark}>Total balance</p>
+          {loading ? (
+            <>
+              <p className="mt-3 text-sm text-on-dark-muted">Loading accounts…</p>
+              <Skeleton className="mt-2 h-12 w-56 bg-on-dark/20 sm:h-16 sm:w-80" />
+            </>
+          ) : (
+            <p className="mt-2 text-display-xl font-bold tabular-nums text-on-dark">
+              {formatPesos(total)}
+            </p>
+          )}
         </div>
-      </div>
 
-      {notice ? <Alert tone="success">{notice}</Alert> : null}
+        <div className="mt-10 grid grid-cols-3 gap-2 sm:gap-4">
+          <ActionTile
+            tone="onDark"
+            label="Deposit"
+            hint="Add funds"
+            icon={<IconDeposit className="h-5 w-5" />}
+            disabled={actionsDisabled}
+            onClick={() => setAction('deposit')}
+          />
+          <ActionTile
+            tone="onDark"
+            label="Withdraw"
+            hint="Take out funds"
+            icon={<IconWithdraw className="h-5 w-5" />}
+            disabled={actionsDisabled}
+            onClick={() => setAction('withdraw')}
+          />
+          <ActionTile
+            tone="onDark"
+            label="Transfer"
+            hint="Send money"
+            icon={<IconTransfer className="h-5 w-5" />}
+            disabled={actionsDisabled}
+            onClick={() => setAction('transfer')}
+          />
+        </div>
+        {!loading && accounts.length === 0 ? (
+          <p className="mt-3 text-xs text-on-dark-muted">Open an account to use money actions.</p>
+        ) : null}
+      </section>
 
-      {opening ? (
-        <section className={card} aria-labelledby="open-account-heading">
-          <h2 id="open-account-heading" className="mb-4 text-lg font-semibold text-slate-900">
-            Open a new account
-          </h2>
-          <OpenAccountForm onCreated={onCreated} />
-        </section>
-      ) : null}
-
-      <section aria-labelledby="accounts-heading" className="space-y-3">
-        <div className="flex items-baseline justify-between gap-4">
-          <h2 id="accounts-heading" className="text-lg font-semibold text-slate-900">
-            Accounts
-          </h2>
-          {accounts.length > 0 ? (
-            <p className="text-sm text-slate-600">
-              Total balance{' '}
-              <span className="tabular-money text-base font-semibold text-slate-900">
-                {formatPesos(total)}
-              </span>
+      <section aria-labelledby="accounts-heading" className="space-y-4">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h2 id="accounts-heading" className="text-display-md font-bold text-text">
+              Accounts
+            </h2>
+            <p className="mt-1 text-sm text-text-muted">Balances are read live on every visit.</p>
+          </div>
+          {!loading && accounts.length > 0 ? (
+            <p className="text-sm text-text-muted">
+              {accounts.length} account{accounts.length === 1 ? '' : 's'}
             </p>
           ) : null}
         </div>
 
         {loading ? (
-          <p className="flex items-center gap-2 py-8 text-sm text-slate-500">
-            <Spinner className="text-slate-400" /> Loading accounts…
-          </p>
+          <div>
+            <p className="mb-3 text-sm text-text-subtle">Loading account cards…</p>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Skeleton className="h-64 rounded-2xl" />
+              <Skeleton className="h-64 rounded-2xl" />
+            </div>
+          </div>
         ) : failure !== null ? (
           <Alert tone="error" title="The account list could not be loaded">
             <p>{failure}</p>
-            <button type="button" className={cx(buttonSecondary, 'mt-3')} onClick={() => void loadAccounts()}>
+            <Button variant="secondary" className="mt-3" onClick={() => void loadAccounts()}>
               Try again
-            </button>
+            </Button>
           </Alert>
         ) : accounts.length === 0 ? (
-          <div className={cx(card, 'py-10 text-center')}>
-            <p className="text-sm text-slate-600">
-              {isAdmin
-                ? 'No accounts in the system yet.'
-                : 'No accounts yet. Open one to get started.'}
-            </p>
+          <div className={card}>
+            <EmptyState
+              title="Ready for your first account?"
+              description="No accounts yet. Open one to get started."
+              icon={<IconCard className="h-6 w-6" />}
+              action={<Button onClick={() => setOpening(true)}>Open your first account</Button>}
+            />
           </div>
         ) : (
           <>
-            <ul className="space-y-3">
+            <ul className="grid gap-4 lg:grid-cols-2">
               {accounts.map((account) => (
-                <li
-                  key={account.accountNumber}
-                  className={cx(card, 'flex flex-wrap items-center gap-4 p-4')}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-slate-900">{account.accountName}</p>
-                    <p className="tabular-money font-mono text-sm text-slate-500">
-                      {account.accountNumber}
-                    </p>
-                  </div>
-                  <p className="tabular-money text-xl font-semibold text-slate-900">
-                    {formatPesos(account.balance)}
-                  </p>
-                  <Link
-                    to={`/accounts/${encodeURIComponent(account.accountNumber)}`}
-                    className={buttonSecondary}
-                  >
-                    Manage
-                  </Link>
+                <li key={account.accountNumber} data-account-number={account.accountNumber}>
+                  <GradientAccountCard
+                    accountNumber={account.accountNumber}
+                    accountName={account.accountName}
+                    balance={account.balance}
+                    kind="Savings"
+                    manageTo={`/accounts/${encodeURIComponent(account.accountNumber)}`}
+                    className="h-full"
+                  />
                 </li>
               ))}
             </ul>
             {totalPages > 1 ? (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-text-subtle">
                 Showing the first {LIST_PAGE_SIZE} of {totalElements} accounts.
               </p>
             ) : null}
@@ -212,39 +219,39 @@ export function DashboardPage() {
         )}
       </section>
 
-      {isAdmin ? (
-        <section className={card} aria-labelledby="lookup-heading">
-          <h2 id="lookup-heading" className="mb-1 text-lg font-semibold text-slate-900">
-            Look up an account
-          </h2>
-          <p className="mb-4 text-sm text-slate-600">
-            Jump to any account by number. As an administrator every account in the system is open
-            to you.
-          </p>
-          <form onSubmit={onLookup} noValidate className="flex flex-wrap items-start gap-3">
-            <div className="min-w-56 flex-1">
-              <Field
-                label="Account number"
-                name="lookup-account-number"
-                value={lookup}
-                placeholder="200001"
-                maxLength={MAX_ACCOUNT_NUMBER_LENGTH}
-                onChange={(event) => setLookup(event.target.value)}
-                invalid={lookupError !== null}
-                hint={lookupError ?? undefined}
-              />
-            </div>
-            <button
-              type="submit"
-              className={cx(buttonPrimary, 'mt-6')}
-              disabled={lookupBusy || lookup.trim() === ''}
-            >
-              {lookupBusy ? <Spinner /> : null}
-              {lookupBusy ? 'Checking…' : 'Open'}
-            </button>
-          </form>
+      <Sheet
+        open={opening}
+        variant="bottom"
+        title="Open a new account"
+        description="The bank assigns its number automatically."
+        onDismiss={() => setOpening(false)}
+      >
+        <section aria-labelledby="open-account-heading">
+          <span id="open-account-heading" className="sr-only">
+            Open a new account
+          </span>
+          <OpenAccountForm
+            feedback="external"
+            onError={(message) => setToast({ tone: 'error', message })}
+            onCreated={onCreated}
+          />
         </section>
-      ) : null}
+      </Sheet>
+
+      <AccountActionSheet
+        action={action}
+        accounts={accounts}
+        onDismiss={() => setAction(null)}
+        onDone={onMoneyMoved}
+        onError={(message) => setToast({ tone: 'error', message })}
+      />
+
+      <Toast
+        open={toast !== null}
+        tone={toast?.tone}
+        message={toast?.message ?? ''}
+        onDismiss={() => setToast(null)}
+      />
     </div>
   )
 }

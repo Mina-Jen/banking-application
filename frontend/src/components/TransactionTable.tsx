@@ -1,97 +1,164 @@
 import { formatPesos } from '../lib/money'
 import type { Transaction } from '../api/types'
-import { cx, tableCell, tableHead } from './ui'
+import { EmptyState } from './EmptyState'
+import { IconArrowDownLeft, IconArrowUpRight, IconInbox } from './Icon'
+import { cx, eyebrow } from './ui'
 
-/** Money arriving in the account, so it is drawn in green with a plus sign. */
 const INFLOW = new Set(['DEPOSIT', 'TRANSFER_IN'])
+const DAY_IN_MS = 86_400_000
 
-const TYPE_LABELS: Record<string, string> = {
-  DEPOSIT: 'Deposit',
-  WITHDRAW: 'Withdrawal',
-  TRANSFER_OUT: 'Transfer out',
-  TRANSFER_IN: 'Transfer in',
+type TransactionGroup = {
+  key: string
+  label: string
+  transactions: Transaction[]
 }
 
-/**
- * One page of an account's transaction history.
- *
- * `createdAt` is an ISO-8601 instant from the backend; it is rendered in the
- * browser's own time zone. Amounts stay strings and are only ever formatted,
- * never parsed into numbers.
- */
-export function TransactionTable({ transactions }: { transactions: Transaction[] }) {
+export function TransactionTable({
+  transactions,
+  now = new Date(),
+}: {
+  transactions: Transaction[]
+  now?: Date
+}) {
   if (transactions.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-slate-500">
-        No transactions on this page yet.
-      </p>
+      <EmptyState
+        title="No transactions yet"
+        description="Deposits, withdrawals, and transfers will appear here."
+        icon={<IconInbox className="h-6 w-6" />}
+      />
     )
   }
 
+  const groups = groupTransactions(transactions, now)
+
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-200">
-        <caption className="sr-only">Transaction history, oldest first</caption>
-        <thead>
-          <tr>
-            <th scope="col" className={tableHead}>Date</th>
-            <th scope="col" className={tableHead}>Type</th>
-            <th scope="col" className={tableHead}>Other account</th>
-            <th scope="col" className={cx(tableHead, 'text-right')}>Amount</th>
-            <th scope="col" className={cx(tableHead, 'text-right')}>Balance after</th>
-            <th scope="col" className={tableHead}>Reference</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {transactions.map((transaction) => {
-            const inflow = INFLOW.has(transaction.type)
-            return (
-              <tr key={transaction.id} className="hover:bg-slate-50">
-                <td className={cx(tableCell, 'whitespace-nowrap')}>
-                  {formatDate(transaction.createdAt)}
-                </td>
-                <td className={tableCell}>
-                  {TYPE_LABELS[transaction.type] ?? transaction.type}
-                </td>
-                <td className={cx(tableCell, 'tabular-money text-left')}>
-                  {transaction.referenceAccount || <span className="text-slate-400">—</span>}
-                </td>
-                <td
-                  className={cx(
-                    tableCell,
-                    'tabular-money font-medium',
-                    inflow ? 'text-emerald-700' : 'text-red-700',
-                  )}
+    <div className="space-y-6">
+      {groups.map((group) => (
+        <section key={group.key} aria-labelledby={`transactions-${group.key}`}>
+          <h3 id={`transactions-${group.key}`} className={eyebrow}>
+            {group.label}
+          </h3>
+          <ul className="mt-2 divide-y divide-line">
+            {group.transactions.map((transaction) => {
+              const inflow = INFLOW.has(transaction.type)
+              const DirectionIcon = inflow ? IconArrowDownLeft : IconArrowUpRight
+
+              return (
+                <li
+                  key={transaction.id}
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-4"
                 >
-                  {inflow ? '+' : '−'}
-                  {formatPesos(transaction.amount)}
-                </td>
-                <td className={cx(tableCell, 'tabular-money text-slate-900')}>
-                  {formatPesos(transaction.balanceAfter)}
-                </td>
-                <td className={cx(tableCell, 'font-mono text-xs text-slate-500')}>
-                  {transaction.reference}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+                  <span
+                    className={cx(
+                      'flex h-10 w-10 items-center justify-center rounded-full',
+                      inflow ? 'bg-success-soft text-success-strong' : 'bg-danger-soft text-danger-strong',
+                    )}
+                  >
+                    <DirectionIcon className="h-5 w-5" />
+                  </span>
+
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold leading-snug text-text">
+                      {transactionTitle(transaction)}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-text-subtle">
+                      {formatTime(transaction.createdAt)} · {transaction.reference}
+                    </span>
+                  </span>
+
+                  <span
+                    className={cx(
+                      'whitespace-nowrap text-right text-sm font-bold tabular-nums',
+                      inflow ? 'text-success' : 'text-danger',
+                    )}
+                  >
+                    {inflow ? '+' : '−'}
+                    {formatPesos(transaction.amount)}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ))}
     </div>
   )
 }
 
-/** ISO instant to a short local date and time; falls back to the raw string. */
-function formatDate(iso: string): string {
+function groupTransactions(transactions: Transaction[], now: Date): TransactionGroup[] {
+  const groups = new Map<string, TransactionGroup>()
+  const newestFirst = [...transactions].sort(
+    (left, right) => timestamp(right.createdAt) - timestamp(left.createdAt),
+  )
+
+  for (const transaction of newestFirst) {
+    const date = new Date(transaction.createdAt)
+    const valid = !Number.isNaN(date.getTime())
+    const key = valid ? localDateKey(date) : 'unknown-date'
+    const group = groups.get(key) ?? {
+      key,
+      label: valid ? dateLabel(date, now) : 'Date unavailable',
+      transactions: [],
+    }
+    group.transactions.push(transaction)
+    groups.set(key, group)
+  }
+
+  return [...groups.values()]
+}
+
+function transactionTitle(transaction: Transaction): string {
+  // The API sends null here for deposits and withdrawals despite the generated type.
+  const referenceAccount = transaction.referenceAccount as string | null
+  const otherAccount = referenceAccount?.trim() || 'another account'
+  switch (transaction.type) {
+    case 'TRANSFER_OUT':
+      return `Sent to ${otherAccount}`
+    case 'TRANSFER_IN':
+      return `Received from ${otherAccount}`
+    case 'WITHDRAW':
+      return 'Withdrawal'
+    default:
+      return 'Deposit'
+  }
+}
+
+function dateLabel(date: Date, now: Date): string {
+  const difference = localDayNumber(now) - localDayNumber(date)
+  if (difference === 0) {
+    return 'Today'
+  }
+  if (difference === 1) {
+    return 'Yesterday'
+  }
+  return date.toLocaleDateString(undefined, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+function formatTime(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) {
-    return iso
+    return 'Time unavailable'
   }
-  return date.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
+  return date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
     minute: '2-digit',
   })
+}
+
+function timestamp(iso: string): number {
+  const value = new Date(iso).getTime()
+  return Number.isNaN(value) ? Number.NEGATIVE_INFINITY : value
+}
+
+function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+}
+
+function localDayNumber(date: Date): number {
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_IN_MS
 }

@@ -1,17 +1,18 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardPage } from './DashboardPage'
 import { bankingApi, type Account, type AccountPage } from '../api/banking'
+import type { Transaction } from '../api/types'
 import { ApiError } from '../api/errors'
 
 /**
  * `vi.hoisted` because the mock factory below runs while the imports above are
  * still being resolved: the object has to exist before `useAuth` can close over
- * it. Tests flip `isAdmin` to see the dashboard as an operator.
+ * it. This page is the customer dashboard; the admin overview has its own tests.
  */
-const auth = vi.hoisted(() => ({ username: 'alice', isAdmin: false }))
+const auth = vi.hoisted(() => ({ username: 'alice' }))
 
 vi.mock('../auth/AuthContext', () => ({ useAuth: () => auth }))
 
@@ -20,11 +21,16 @@ vi.mock('../api/banking', () => ({
     accounts: vi.fn(),
     getAccount: vi.fn(),
     createAccount: vi.fn(),
+    deposit: vi.fn(),
+    withdraw: vi.fn(),
+    transfer: vi.fn(),
   },
 }))
 
 const accounts = vi.mocked(bankingApi.accounts)
 const getAccount = vi.mocked(bankingApi.getAccount)
+const deposit = vi.mocked(bankingApi.deposit)
+const transfer = vi.mocked(bankingApi.transfer)
 
 function account(accountNumber: string, balance: string): Account {
   return {
@@ -42,6 +48,22 @@ function pageOf(items: Account[], overrides: Partial<AccountPage> = {}): Account
     size: 100,
     totalElements: items.length,
     totalPages: 1,
+    ...overrides,
+  }
+}
+
+function transaction(overrides: Partial<Transaction> = {}): Transaction {
+  return {
+    id: 1,
+    reference: 'TXN-dashboard-1',
+    accountNumber: '200001',
+    type: 'DEPOSIT',
+    amount: '25.00',
+    balanceAfter: '1525.00',
+    referenceAccount: '',
+    description: '',
+    category: '',
+    createdAt: '2026-10-23T10:00:00Z',
     ...overrides,
   }
 }
@@ -66,9 +88,18 @@ function renderDashboard() {
 
 beforeEach(() => {
   auth.username = 'alice'
-  auth.isAdmin = false
   vi.clearAllMocks()
   accounts.mockResolvedValue(pageOf([]))
+  deposit.mockResolvedValue(transaction())
+  transfer.mockResolvedValue(
+    transaction({
+      type: 'TRANSFER_OUT',
+      referenceAccount: '200002',
+      description: '',
+      category: '',
+      balanceAfter: '1475.00',
+    }),
+  )
 })
 
 describe('DashboardPage states', () => {
@@ -154,37 +185,104 @@ describe('DashboardPage roles', () => {
 
     expect(screen.queryByText('Look up an account')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Your accounts' })).toBeInTheDocument()
+    // The operator wording belongs to the admin overview, which is a different page.
+    expect(screen.queryByRole('heading', { name: 'All accounts' })).not.toBeInTheDocument()
+  })
+})
+
+describe('DashboardPage money actions', () => {
+  it('disables every money action until an account exists', async () => {
+    renderDashboard()
+
+    await screen.findByText('No accounts yet. Open one to get started.')
+    for (const name of ['Deposit', 'Withdraw', 'Transfer']) {
+      expect(screen.getByRole('button', { name })).toBeDisabled()
+    }
   })
 
-  it('gives admins the lookup panel and the operator wording', async () => {
-    auth.isAdmin = true
+  it('renders masked gradient cards with separate Manage links', async () => {
     accounts.mockResolvedValueOnce(pageOf([account('200001', '1500.00')]))
-
     renderDashboard()
 
-    expect(await screen.findByRole('heading', { name: 'All accounts' })).toBeInTheDocument()
-    expect(screen.getByText('Look up an account')).toBeInTheDocument()
-
-    getAccount.mockResolvedValueOnce(account('200001', '1500.00'))
-    await userEvent.type(screen.getByLabelText('Account number'), '200001')
-    await userEvent.click(screen.getByRole('button', { name: 'Open' }))
-
-    expect(getAccount).toHaveBeenCalledWith('200001')
+    expect(await screen.findByText('•••• 0001')).toBeInTheDocument()
+    expect(screen.queryByText('200001')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy number' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Manage' })).toHaveAttribute('href', '/accounts/200001')
   })
 
-  it('announces a refused lookup without navigating away', async () => {
-    auth.isAdmin = true
+  it('opens Deposit in a dialog and makes the source account explicit', async () => {
+    accounts.mockResolvedValueOnce(
+      pageOf([account('200001', '1500.00'), account('200002', '250.00')]),
+    )
     renderDashboard()
-    await screen.findByText('Look up an account')
+    await screen.findByText('Account 200001')
 
-    // What the backend answers for both "not yours" and "does not exist".
-    getAccount.mockRejectedValueOnce(new ApiError(404, 'Not Found', 'Account not found.'))
-    await userEvent.type(screen.getByLabelText('Account number'), '999999')
-    await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Deposit' }))
 
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Account not found.')
-    // The backend wording never repeats the number, and neither may the page.
-    expect(alert).not.toHaveTextContent('999999')
+    const dialog = screen.getByRole('dialog', { name: 'Deposit' })
+    const accountPicker = within(dialog).getByLabelText('Account to use')
+    expect(accountPicker).toHaveValue('200001')
+    expect(within(dialog).getByLabelText('Amount to deposit')).toBeInTheDocument()
+    expect(within(dialog).getByRole('option', { name: /Account 200002.*₱250\.00/ })).toBeInTheDocument()
+  })
+
+  it('uses the account selected in the action dialog and shows success as a toast', async () => {
+    accounts.mockResolvedValue(
+      pageOf([account('200001', '1500.00'), account('200002', '250.00')]),
+    )
+    renderDashboard()
+    await screen.findByText('Account 200001')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Deposit' }))
+    const actionDialog = screen.getByRole('dialog', { name: 'Deposit' })
+    await userEvent.selectOptions(within(actionDialog).getByLabelText('Account to use'), '200002')
+    await userEvent.type(within(actionDialog).getByLabelText('Amount to deposit'), '25')
+    await userEvent.click(within(actionDialog).getByRole('button', { name: 'Deposit' }))
+
+    const confirm = await screen.findByRole('dialog', { name: 'Confirm deposit' })
+    expect(within(confirm).getByText('200002')).toBeInTheDocument()
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Deposit ₱25.00' }))
+
+    expect(deposit).toHaveBeenCalledWith('200002', '25.00', expect.any(String))
+    const toast = await screen.findByRole('status')
+    expect(toast).toHaveTextContent('₱25.00 recorded. Reference TXN-dashboard-1.')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shows dashboard action failures as a persistent error toast', async () => {
+    accounts.mockResolvedValueOnce(pageOf([account('200001', '1500.00')]))
+    deposit.mockRejectedValueOnce(
+      new ApiError(503, 'Service Unavailable', 'Deposits are unavailable right now.'),
+    )
+    renderDashboard()
+    await screen.findByText('Account 200001')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Deposit' }))
+    const actionDialog = screen.getByRole('dialog', { name: 'Deposit' })
+    await userEvent.type(within(actionDialog).getByLabelText('Amount to deposit'), '25')
+    await userEvent.click(within(actionDialog).getByRole('button', { name: 'Deposit' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Confirm deposit' })
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Deposit ₱25.00' }))
+
+    const toast = await screen.findByRole('alert')
+    expect(toast).toHaveTextContent('Deposits are unavailable right now.')
+    expect(within(toast).getByRole('button', { name: 'Dismiss message' })).toBeInTheDocument()
+  })
+
+  it('keeps the transfer amount and recipient in a confirmation step', async () => {
+    accounts.mockResolvedValueOnce(pageOf([account('200001', '1500.00')]))
+    renderDashboard()
+    await screen.findByText('Account 200001')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Transfer' }))
+    const actionDialog = screen.getByRole('dialog', { name: 'Transfer' })
+    await userEvent.type(within(actionDialog).getByLabelText('To account number'), '200002')
+    await userEvent.type(within(actionDialog).getByLabelText('Amount'), '30')
+    await userEvent.click(within(actionDialog).getByRole('button', { name: 'Transfer' }))
+
+    const confirm = await screen.findByRole('dialog', { name: 'Confirm transfer' })
+    expect(within(confirm).getByText('₱30.00')).toBeInTheDocument()
+    expect(within(confirm).getByText('200002')).toBeInTheDocument()
+    expect(transfer).not.toHaveBeenCalled()
   })
 })

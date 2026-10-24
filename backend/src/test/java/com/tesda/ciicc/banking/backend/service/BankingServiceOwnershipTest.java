@@ -12,6 +12,7 @@ import com.tesda.ciicc.banking.backend.repository.AccountRepository;
 import com.tesda.ciicc.banking.backend.repository.TransactionRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -314,26 +315,35 @@ class BankingServiceOwnershipTest {
         verifyNoInteractions(accountOwners, audit);
     }
 
+    // =====================================================================
+    //  ADMIN oversees money but never moves it
+    // =====================================================================
+
     @Test
-    void adminSeesWhichDestinationIsMissing() throws Exception {
-        when(accounts.findByAccountNumberForUpdate(ALICE_ACCOUNT))
-                .thenReturn(Optional.of(account(ALICE_ACCOUNT, "100.00")));
-        when(accounts.findByAccountNumberForUpdate(STRANGE_ACCOUNT)).thenReturn(Optional.empty());
+    void adminCannotDepositWithdrawOrTransferAndNothingIsLocked() {
+        BigDecimal ten = new BigDecimal("10.00");
 
-        AccountNotFoundException e = assertThrows(AccountNotFoundException.class,
-                () -> service.transfer(ADMIN, ALICE_ACCOUNT, STRANGE_ACCOUNT, new BigDecimal("10.00")));
+        AccessDeniedException deposit = assertThrows(AccessDeniedException.class,
+                () -> service.deposit(ADMIN, ALICE_ACCOUNT, ten));
+        assertThrows(AccessDeniedException.class, () -> service.withdraw(ADMIN, ALICE_ACCOUNT, ten));
+        assertThrows(AccessDeniedException.class,
+                () -> service.transfer(ADMIN, ALICE_ACCOUNT, STRANGE_ACCOUNT, ten));
 
-        assertEquals("Account " + STRANGE_ACCOUNT + " does not exist.", e.getMessage());
+        assertEquals("Administrators cannot deposit. Only the account holder can move money.",
+                deposit.getMessage());
+        verify(audit).recordDeniedMoneyMovement(ADMIN, ALICE_ACCOUNT, "deposit");
+        verify(audit).recordDeniedMoneyMovement(ADMIN, ALICE_ACCOUNT, "withdraw");
+        verify(audit).recordDeniedMoneyMovement(ADMIN, ALICE_ACCOUNT, "transfer");
+        verifyNoInteractions(accounts, transactions, accountOwners);
     }
 
     @Test
-    void adminAlsoRunsOutOfMoneyBeforeHearingTheDestinationIsMissing() throws Exception {
-        when(accounts.findByAccountNumberForUpdate(ALICE_ACCOUNT))
-                .thenReturn(Optional.of(account(ALICE_ACCOUNT, "100.00")));
-        when(accounts.findByAccountNumberForUpdate(STRANGE_ACCOUNT)).thenReturn(Optional.empty());
-
-        assertThrows(InsufficientFundsException.class,
-                () -> service.transfer(ADMIN, ALICE_ACCOUNT, STRANGE_ACCOUNT, new BigDecimal("500.00")));
+    void adminIsRefusedEvenForAMissingAccount() {
+        // The refusal is about the role, so it does not depend on (or reveal)
+        // whether the account exists.
+        assertThrows(AccessDeniedException.class,
+                () -> service.deposit(ADMIN, STRANGE_ACCOUNT, new BigDecimal("10.00")));
+        verifyNoInteractions(accounts, transactions);
     }
 
     @Test

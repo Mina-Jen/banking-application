@@ -1,5 +1,112 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   CIICC Banking — design tokens
+   Tailwind v4 is configured in CSS, so this file is the whole theme: every
+   colour, font size and radius below becomes a utility (bg-action, text-ink-500,
+   rounded-field…). Nothing here is a one-off; if a component needs a value that
+   is not a token, the token is missing.
+   Contrast ratios in the comments are measured with the WCAG 2.2 relative-
+   luminance formula, not estimated. docs/design-system.md is the prose version.
+   ========================================================================== */
+
+@theme {
+  /* Brand ramp — cyan into indigo. Only brand-700 and darker are safe to write
+     on a light surface; brand-500 is 3.7:1, so it is for large type, icons and
+     the gradient, never for body copy. */
+  --color-brand-50: #eef6ff;
+  --color-brand-100: #d9ebff;
+  --color-brand-200: #bcdcff;
+  --color-brand-300: #8ec6ff;
+  --color-brand-400: #59a8fb;
+  --color-brand-500: #2f83f0;
+  --color-brand-600: #1c63d6;
+  --color-brand-700: #1a4fae;
+  --color-brand-800: #1c4189;
+  --color-brand-900: #1c3a6e;
+  --color-brand-950: #12203f;
+
+  /* Depth — the four stops of the hero gradient, read left to right as money
+     sinking into an account: cyan, blue, indigo, near-black. Bare, these stops
+     are not safe for copy — white is 1.5:1 on depth-1 and 3.7:1 on depth-2 —
+     which is what the .hero-gradient scrim exists to fix. Never paint one of
+     these stops directly and write on it; use .hero-gradient. */
+  --color-depth-1: #5fe3ef;
+  --color-depth-2: #2f83f0;
+  --color-depth-3: #2b2470;
+  --color-depth-4: #060b18;
+  --color-depth-scrim: #030814;
+
+  /* Ink — cool neutrals, kept at the values the app already used so adopting a
+     token is a rename and not a re-render. */
+  --color-ink-50: #f8fafc;
+  --color-ink-100: #f1f5f9;
+  --color-ink-200: #e2e8f0;
+  --color-ink-300: #cbd5e1;
+  --color-ink-400: #94a3b8;
+  --color-ink-500: #64748b;
+  --color-ink-600: #475569;
+  --color-ink-700: #334155;
+  --color-ink-800: #1e293b;
+  --color-ink-900: #0f172a;
+  --color-ink-950: #020617;
+
+  /* Semantic surfaces and text — components name these, not a ramp step. */
+  --color-canvas: #f1f5f9;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+  /* A form boundary is a control, so it has to clear 3:1 as non-text rather
+     than 4.5:1 as text; this is the lightest grey that does. */
+  --color-field-border: #7f93ab;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+  --color-text-subtle: #576779;
+  --color-on-dark: #ffffff;
+  --color-on-dark-muted: #cbd5e1;
+
+  /* Action and money semantics. The plain step is a fill with white text on it
+     or text on white — the same value works both ways, which keeps the palette
+     small. The -strong step is for text sitting on a -soft tint. */
+  --color-action: #1c63d6;
+  --color-action-strong: #1a4fae;
+  --color-action-soft: #eef6ff;
+  --color-success: #047857;
+  --color-success-strong: #065f46;
+  --color-success-soft: #ecfdf5;
+  --color-danger: #b91c1c;
+  --color-danger-strong: #991b1b;
+  --color-danger-soft: #fef2f2;
+  /* Error text on the gradient, where danger itself is about 2:1. The lightest
+     red that still reads as red: 5.3:1 at the scrim's brightest point with the
+     grain blended in. */
+  --color-danger-on-dark: #fecaca;
+  --color-warning: #b45309;
+  --color-warning-strong: #92400e;
+  --color-warning-soft: #fffbeb;
+
+  /* Type — one self-hosted family, loaded in main.tsx from @fontsource. */
+  --font-sans:
+    "Manrope Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+
+  /* Display sizes carry their own leading and tracking so a headline cannot be
+     assembled without the tight, heavy setting that makes the style work. */
+  --text-display-sm: 1.25rem;
+  --text-display-sm--line-height: 1.1;
+  --text-display-sm--letter-spacing: -0.015em;
+  --text-display-md: 1.75rem;
+  --text-display-md--line-height: 1.05;
+  --text-display-md--letter-spacing: -0.02em;
+  --text-display-lg: 2.5rem;
+  --text-display-lg--line-height: 1;
+  --text-display-lg--letter-spacing: -0.025em;
+  --text-display-xl: clamp(2.75rem, 1.5rem + 5.5vw, 4.5rem);
+  --text-display-xl--line-height: 0.94;
+  --text-display-xl--letter-spacing: -0.03em;
+}
+
 html {
   color-scheme: light;
 }
@@ -7,15 +114,176 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: var(--color-slate-100);
-  color: var(--color-slate-900);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--color-canvas);
+  color: var(--color-text);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
 /* Money is right-aligned and tabular so columns of amounts line up digit by
-   digit instead of shifting with proportional glyph widths. */
+   digit instead of shifting with proportional glyph widths.
+
+   Kept unlayered on purpose: it has to win over a stray text-left, which is how
+   the existing screens behave. New components that only want the digits to stop
+   moving use Tailwind's own `tabular-nums` and set alignment themselves. */
 .tabular-money {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
   text-align: right;
+}
+
+@layer components {
+  /* The signature surface: the depth gradient with a film grain over it and a
+     scrim that guarantees AA wherever copy is allowed to land.
+
+     Layout of the gradient is fixed — the light cyan band is the top ~22%, so
+     the scrim is only needed where the eye has already left the bright end.
+     The grain is an inline SVG (no image file, nothing to fetch, nothing to
+     cache-bust) and it is static: there is no animation here to opt out of. */
+  .hero-gradient {
+    position: relative;
+    isolation: isolate;
+    background-color: var(--color-depth-4);
+    background-image: linear-gradient(
+      155deg,
+      var(--color-depth-1) 0%,
+      var(--color-depth-2) 22%,
+      var(--color-depth-3) 56%,
+      var(--color-depth-4) 88%
+    );
+    color: var(--color-on-dark);
+  }
+
+  /* Scrim under the copy. Its 66% floor is what makes the whole surface safe to
+     write on: white text is 8.6:1 even on the brightest cyan stop and 20:1 at
+     the bottom, and the muted on-dark token never drops below 5.8:1 — 5.2:1
+     after the grain's lightest speckle is blended in. Those are the measured
+     composites, so a layout change cannot push a headline into an inaccessible
+     band. */
+  .hero-gradient::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background-image: linear-gradient(
+      to bottom,
+      rgb(3 8 20 / 0.66) 0%,
+      rgb(3 8 20 / 0.72) 45%,
+      rgb(3 8 20 / 0.9) 100%
+    );
+  }
+
+  /* Grain above the scrim, below the content. Kept faint so it stays a texture:
+     overlay at 0.18 moves the luminance of the dark end by well under a point,
+     which is why the ratios above still hold with it on. */
+  .hero-gradient::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.18;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  }
+
+  /* A solid plate for anything that must sit high on the gradient — a masked
+     account number, a balance. Same near-black as the dark end, so it reads as
+     part of the surface instead of a card dropped on top of it. */
+  .hero-plate {
+    background-color: rgb(3 8 20 / 0.72);
+  }
+
+  /* Display style: uppercase, heaviest weight, balanced line breaks. Pair with
+     a text-display-* size; the two together are the headline. */
+  .display {
+    text-transform: uppercase;
+    font-weight: 800;
+    text-wrap: balance;
+  }
+
+  /* Loading placeholder. The shimmer is the only moving part in the system that
+     is purely decorative, so it is the first thing reduced motion turns off. */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--color-ink-200);
+  }
+
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.65),
+      transparent
+    );
+    transform: translateX(-100%);
+    animation: skeleton-sweep 1.6s ease-in-out infinite;
+  }
+
+  .sheet-backdrop {
+    animation: backdrop-in 180ms ease-out both;
+  }
+
+  .sheet-panel {
+    animation: panel-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .toast-panel {
+    animation: panel-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Press feedback for every tappable tile and pill: the element gives a little,
+     the surrounding layout does not move. */
+  .press {
+    transition:
+      transform 150ms ease-out,
+      background-color 150ms ease-out,
+      box-shadow 150ms ease-out;
+  }
+
+  .press:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  @keyframes skeleton-sweep {
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes backdrop-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* The sweep is the one purely decorative movement in the system, so it is
+     dropped entirely rather than slowed down. The placeholder keeps its shape
+     and the loading message beside it keeps its words. */
+  .skeleton::after {
+    display: none;
+  }
 }

@@ -1,6 +1,10 @@
 import { cx } from './ui'
 
-/** Inline spinner. `aria-hidden` because the surrounding text carries meaning. */
+/**
+ * Inline spinner. `aria-hidden` because the surrounding text carries meaning:
+ * under prefers-reduced-motion the sweep is switched off globally, and the only
+ * thing left saying "working" is the button's own label.
+ */
 export function Spinner({ className }: { className?: string }) {
   return (
     <svg

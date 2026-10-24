@@ -30,6 +30,7 @@ import static org.mockito.Mockito.when;
 class BankingServiceValidationTest {
 
     private static final CurrentUser ADMIN = new CurrentUser(0, "validation-test", Role.ADMIN);
+    private static final CurrentUser CUSTOMER = new CurrentUser(5, "validation-customer", Role.CUSTOMER);
 
     private static BankingService serviceWithoutDatabase() {
         AccountRepository accounts = mock(AccountRepository.class);
@@ -137,7 +138,9 @@ class BankingServiceValidationTest {
         // input is legal, so reaching the stub is the expected outcome here.
         assertThrows(IllegalStateException.class,
                 () -> serviceWithoutDatabase().createAccount(ADMIN, "100001", "Juan", new BigDecimal("500.10")));
+        // Only an account holder moves money, so the deposit runs as a customer;
+        // the stubbed ownership lookup is the first database call it reaches.
         assertThrows(IllegalStateException.class,
-                () -> serviceWithoutDatabase().deposit(ADMIN, "100001", new BigDecimal("10.00")));
+                () -> serviceWithoutDatabase().deposit(CUSTOMER, "100001", new BigDecimal("10.00")));
     }
 }

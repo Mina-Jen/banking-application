@@ -61,8 +61,11 @@ class BankingServiceMySQLTest {
 
     private static final BigDecimal INITIAL_BALANCE = new BigDecimal("1000");
 
-    /** The existing tests act as the operator; the ownership rule has its own tests below. */
+    /** Opens accounts with chosen numbers and reads them; ADMIN may not move money. */
     private static final CurrentUser ADMIN = new CurrentUser(0, "it-admin", Role.ADMIN);
+
+    /** Owns every account createAccount() opens and makes the classic tests' money moves. */
+    private CurrentUser holder;
 
     @Autowired
     private BankingService service;
@@ -84,6 +87,7 @@ class BankingServiceMySQLTest {
         jdbcTemplate.update("DELETE FROM accounts");
         jdbcTemplate.update("DELETE FROM users");
         jdbcTemplate.update("DELETE FROM audit_log");
+        holder = registerCustomer("it-holder");
     }
 
     // BigDecimal("7000") and BigDecimal("7000.00") are NOT equal() (different scale),
@@ -461,13 +465,39 @@ class BankingServiceMySQLTest {
         assertEquals(1, denied);
     }
 
+    @Test
+    void adminCannotMoveMoneyAndTheRefusalIsAudited() throws Exception {
+        createAccount("100001", "Juan", new BigDecimal("1000"));
+        createAccount("100002", "Pedro", new BigDecimal("1000"));
+
+        assertThrows(AccessDeniedException.class,
+                () -> service.deposit(ADMIN, "100001", new BigDecimal("50")));
+        assertThrows(AccessDeniedException.class,
+                () -> service.withdraw(ADMIN, "100001", new BigDecimal("50")));
+        assertThrows(AccessDeniedException.class,
+                () -> service.transfer(ADMIN, "100001", "100002", new BigDecimal("50")));
+
+        assertMoney("1000", getAccount("100001").getBalance());
+        assertMoney("1000", getAccount("100002").getBalance());
+        assertEquals(1, getTransactionHistory("100001").size());
+        // Each refusal commits on its own, although the operation rolled back.
+        Integer denied = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE username = 'it-admin' AND action = 'ACCESS_DENIED'",
+                Integer.class);
+        assertEquals(3, denied);
+    }
+
     // =====================================================================
-    //  Call helpers: the classic tests above run as ADMIN, so they keep their
-    //  original shape; the caller-aware overloads drive the ownership tests.
+    //  Call helpers: the classic tests above move money as the holder of
+    //  every account they open; the caller-aware overloads drive the
+    //  ownership tests.
     // =====================================================================
 
     private Account createAccount(String accountNumber, String name, BigDecimal deposit) throws Exception {
-        return service.createAccount(ADMIN, accountNumber, name, deposit);
+        Account account = service.createAccount(ADMIN, accountNumber, name, deposit);
+        jdbcTemplate.update("INSERT INTO account_owners (user_id, account_number) VALUES (?, ?)",
+                holder.id(), accountNumber);
+        return account;
     }
 
     private Account getAccount(String accountNumber) throws Exception {
@@ -479,7 +509,7 @@ class BankingServiceMySQLTest {
     }
 
     private Transaction deposit(String accountNumber, BigDecimal amount) throws Exception {
-        return service.deposit(ADMIN, accountNumber, amount);
+        return service.deposit(holder, accountNumber, amount);
     }
 
     private Transaction deposit(CurrentUser caller, String accountNumber, BigDecimal amount) throws Exception {
@@ -487,7 +517,7 @@ class BankingServiceMySQLTest {
     }
 
     private Transaction withdraw(String accountNumber, BigDecimal amount) throws Exception {
-        return service.withdraw(ADMIN, accountNumber, amount);
+        return service.withdraw(holder, accountNumber, amount);
     }
 
     private Transaction withdraw(CurrentUser caller, String accountNumber, BigDecimal amount) throws Exception {
@@ -496,7 +526,7 @@ class BankingServiceMySQLTest {
 
     private Transaction transfer(String sourceAccount, String destinationAccount,
                                  BigDecimal amount) throws Exception {
-        return service.transfer(ADMIN, sourceAccount, destinationAccount, amount);
+        return service.transfer(holder, sourceAccount, destinationAccount, amount);
     }
 
     private Transaction transfer(CurrentUser caller, String sourceAccount, String destinationAccount,
@@ -518,9 +548,10 @@ class BankingServiceMySQLTest {
         return new CurrentUser(id, username, Role.CUSTOMER);
     }
 
+    /** An account has exactly one owner, so this hands it over from the default holder. */
     private CurrentUser registerCustomerWithAccount(String username, String accountNumber) {
         CurrentUser user = registerCustomer(username);
-        jdbcTemplate.update("INSERT INTO account_owners (user_id, account_number) VALUES (?, ?)",
+        jdbcTemplate.update("UPDATE account_owners SET user_id = ? WHERE account_number = ?",
                 user.id(), accountNumber);
         return user;
     }

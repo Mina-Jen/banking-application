@@ -1,13 +1,134 @@
-# Banking Application
+# CIICC Banking
 
-A banking application built with **Java**, **MySQL (XAMPP)**, **JDBC**, and
-**Spring Boot**, with a **React** web frontend.
-Final project for TESDA - Java Programming NCIII.
+[![CI](https://github.com/Mina-Jen/banking-application/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Mina-Jen/banking-application/actions/workflows/ci.yml)
+[![Java 17](https://img.shields.io/badge/Java-17-informational)](https://openjdk.org/projects/jdk/17/)
+[![Spring Boot 3.5](https://img.shields.io/badge/Spring_Boot-3.5-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![MySQL 8.4](https://img.shields.io/badge/MySQL-8.4-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
 
-The project started as a console application (Phase 0, `src/`), gained a Spring
-Boot backend (Phase 1, `backend/`), JWT authentication and roles (Phase 2), and
-a React single-page frontend (Phase 3, `frontend/`). All three parts are
-runnable.
+**A full-stack banking application where customers move money under strict
+transactional rules, and administrators run the operation without ever touching
+a balance.**
+
+Customers open accounts, deposit, withdraw, and transfer; every movement is
+confirmed, idempotent, and audited. Operators get a read-only portal with live
+ledger reconciliation and an anomaly review queue. Built with Spring Boot,
+React, MySQL, and Docker, and tested at every layer.
+
+![Customer dashboard showing total balance, money actions, and an account card](docs/screenshots/customer-dashboard.png)
+
+| Operator overview | Anomaly review |
+| --- | --- |
+| [![System overview with KPIs, ledger reconciliation, and every account](docs/screenshots/admin-overview.png)](docs/screenshots/admin-overview.png) | [![Anomaly review queue with unusual-amount flags](docs/screenshots/admin-review.png)](docs/screenshots/admin-review.png) |
+| Balances, ledger check, and read-only account access | Rule-raised flags with one-way review decisions |
+
+<details>
+<summary>Customer account view: transaction history and money forms</summary>
+
+![Account page with grouped transaction history and deposit, withdraw, and transfer forms](docs/screenshots/customer-account.png)
+
+</details>
+
+## Highlights
+
+- **Customer portal** — open an account, deposit, withdraw, and transfer with an
+  explicit confirmation step, plus grouped transaction history.
+- **Operator portal** — system KPIs, live ledger reconciliation, account lookup,
+  and an anomaly queue for unusual amounts and rapid outbound movement.
+  Administrators are read-only by rule, not by convention: the API refuses any
+  admin money movement with 403 and records it in the audit log.
+- **Money that stays consistent** — `BigDecimal` in Java and decimal strings in
+  JSON (never floating point), one transaction per movement, row locks taken in
+  account-number order, and an idempotency key on every deposit, withdrawal, and
+  transfer.
+- **Security** — JWT access and refresh tokens with single-flight refresh and
+  replay, brute-force login protection, per-user API rate limits, BCrypt, an
+  audit trail, and a bootstrapped admin account.
+- **AI, optional** — transaction category suggestions and a read-only account
+  assistant backed by Claude. Without an API key the app still runs; those
+  endpoints answer 503.
+- **Tested at every layer** — 318 backend tests (H2 and Testcontainers MySQL),
+  325 frontend tests, Playwright end-to-end flows, and Checkstyle + ESLint gates
+  in CI.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  browser["Browser<br/>React 19 SPA<br/>Vite dev · nginx prod"]
+  api["Spring Boot 3.5<br/>REST · security · rate limits"]
+  db[("MySQL 8.4<br/>Flyway V1–V7")]
+  claude["Anthropic Messages API"]
+  ci["GitHub Actions<br/>test · lint · build"]
+  ghcr["GHCR images"]
+
+  browser -->|"/api · JWT"| api
+  api -->|"JPA · transactions"| db
+  api -.->|"optional"| claude
+  ci --> ghcr
+  ghcr --> browser
+  ghcr --> api
+```
+
+The frontend never talks to the database; nginx and the Vite dev server both
+proxy `/api` to the backend, so the browser stays on one origin and the JWT never
+crosses hosts. Flyway owns the schema, including the unique index that makes
+idempotency safe under concurrent retries.
+
+## Run it locally
+
+```bash
+cp .env.example .env
+# set MYSQL_ROOT_PASSWORD, BANKING_DB_PASSWORD and JWT_SECRET
+# (openssl rand -base64 48); set ADMIN_PASSWORD to seed the first admin
+docker compose up --build
+```
+
+| URL | Service |
+| --- | --- |
+| <http://localhost:3000> | the React app, served by nginx |
+| <http://localhost:18080/swagger-ui.html> | the OpenAPI browser |
+| <http://localhost:18080/actuator/health> | the backend health probe |
+
+The backend and frontend can also run separately for development; see the setup
+sections below.
+
+## Engineering decisions worth a look
+
+- **Deadlock-safe money movement.** Every balance change runs in one transaction,
+  locks the accounts with `SELECT … FOR UPDATE` in account-number order, and is
+  covered by tests for transfer ordering and rollback.
+- **Retries cannot double-pay.** Each money request carries an
+  `Idempotency-Key`; the same key replays the recorded response instead of
+  moving money twice. [Details](#idempotency-key)
+- **Read-only by rule.** The service layer, not the UI, refuses an
+  administrator's deposit, withdrawal, or transfer — and audits the attempt.
+  This is proven at the service, API, and component layers.
+- **The client mirrors server validation.** Zod schemas on every form, with the
+  same rules enforced again by the API; errors are shown next to the field and
+  keep the user's input. [Details](#design-notes)
+- **Failure is a feature.** Unknown account and "not yours" return the same
+  answer, login and per-user calls are rate limited, and the API exposes a
+  single error shape. [Details](#errors) · [Rate limiting](#rate-limiting)
+- **The ledger is checked, not assumed.** Reconciliation compares stored balances
+  with the sum of ledger rows and reports discrepancies to the operator.
+  [Details](#reconciliation-money-integrity)
+
+## Background
+
+Started as the console banking exercise for TESDA's Java Programming NC III
+(Phase 0), then rebuilt phase by phase: a Spring Boot API, JWT authentication and
+roles, a React single-page frontend, operational features (categories, anomaly
+flags, reconciliation, assistant), and finally a containerised stack with CI.
+The console app, API, and SPA all live in this repository.
+
+---
+
+## Detailed reference
+
+Everything below is the build log and reference: schema, REST API,
+configuration, test strategy, and operations. Jump to
+[Project structure](#project-structure) or the [REST API](#rest-api).
 
 ## Features (Console)
 1. Create Account

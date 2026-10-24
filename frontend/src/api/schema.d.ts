@@ -4,6 +4,46 @@
  */
 
 export interface paths {
+    "/api/anomaly-flags/{flagId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Close an anomaly flag
+         * @description ADMIN only. Records REVIEWED or DISMISSED, who decided and when. A decision is one-way: an already closed flag is a 409.
+         */
+        put: operations["reviewFlag"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{accountNumber}/transactions/{transactionId}/category": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Store a category for a transaction
+         * @description Accepts a suggested category or stores one chosen by hand. The code must be one of the documented vocabulary values; anything else is a 422.
+         */
+        put: operations["setCategory"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/transfers": {
         parameters: {
             query?: never;
@@ -84,6 +124,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assistant/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask the banking assistant a question
+         * @description Runs a tool-calling conversation with Claude. The tools read balances, search transactions and summarize spending, always for the authenticated caller. A requested transfer comes back as a proposal only; confirm it with POST /api/transfers. Requires ANTHROPIC_API_KEY.
+         */
+        post: operations["chat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/accounts": {
         parameters: {
             query?: never;
@@ -122,6 +182,26 @@ export interface paths {
          * @description Requires an Idempotency-Key header, same replay rules as deposit.
          */
         post: operations["withdraw"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{accountNumber}/transactions/{transactionId}/category-suggestion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest a category for a transaction
+         * @description Sends the transaction type, amount and an optional description to Claude and returns one code from the closed category vocabulary. The suggestion is NOT stored; accept it with PUT .../category. The account must belong to the caller.
+         */
+        post: operations["suggestCategory"];
         delete?: never;
         options?: never;
         head?: never;
@@ -168,6 +248,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check that every account balance equals the sum of its ledger rows
+         * @description ADMIN only. Read-only: it reports the accounts that do not add up and changes no balance, because a discrepancy has to be explained before it is corrected.
+         */
+        get: operations["reconcile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/anomaly-flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List anomaly flags, newest first
+         * @description ADMIN only. Without a status filter every flag is listed; status=OPEN is the review queue. Flags never block or reverse a transaction.
+         */
+        get: operations["listFlags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/accounts/{accountNumber}": {
         parameters: {
             query?: never;
@@ -206,23 +326,86 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** @description Request body for a transfer between two accounts */
-        TransferRequest: {
+        /** @description An admin's decision about an anomaly flag */
+        ReviewAnomalyFlagRequest: {
             /**
-             * @description Account to take the money from
-             * @example 100001
+             * @description REVIEWED (handled) or DISMISSED (nothing wrong)
+             * @example REVIEWED
              */
-            sourceAccountNumber?: string;
+            status?: string;
+        };
+        /** @description A rule finding about one transaction, waiting for or closed by an ADMIN review */
+        AnomalyFlagResponse: {
             /**
-             * @description Account to put the money into
-             * @example 100002
+             * Format: int32
+             * @description Flag id
+             * @example 12
              */
-            destinationAccountNumber?: string;
+            id?: number;
             /**
-             * @description Amount as a decimal string: greater than zero, at most two decimal places
-             * @example 2000.00
+             * Format: int32
+             * @description The flagged transaction
+             * @example 42
+             */
+            transactionId?: number;
+            /**
+             * @description Reference of the flagged transaction
+             * @example TXN-lz3k9x00a1b2
+             */
+            transactionReference?: string;
+            /**
+             * @description Account the transaction belongs to
+             * @example 200001
+             */
+            accountNumber?: string;
+            /**
+             * @description WITHDRAW or TRANSFER_OUT
+             * @example WITHDRAW
+             */
+            transactionType?: string;
+            /**
+             * @description Flagged amount as a decimal string
+             * @example 5000.00
              */
             amount?: string;
+            /**
+             * @description UNUSUAL_AMOUNT or VELOCITY
+             * @example UNUSUAL_AMOUNT
+             */
+            rule?: string;
+            /**
+             * @description OPEN, REVIEWED or DISMISSED
+             * @example OPEN
+             */
+            status?: string;
+            /**
+             * @description What the rule saw, in words
+             * @example 5000.00 is at least 3x the 100.00 average of the last 3 outbound transactions (flag floor 1000.00).
+             */
+            details?: string;
+            /**
+             * @description When the flag was raised, ISO-8601
+             * @example 2026-10-22T10:15:30Z
+             */
+            createdAt?: string;
+            /**
+             * @description When an admin closed the flag, absent while OPEN
+             * @example 2026-10-22T11:00:00Z
+             */
+            reviewedAt?: string;
+            /**
+             * @description Admin who closed the flag, absent while OPEN
+             * @example admin
+             */
+            reviewedBy?: string;
+        };
+        /** @description The category the account owner accepted for a transaction */
+        SetCategoryRequest: {
+            /**
+             * @description One code from the category vocabulary
+             * @example GROCERIES
+             */
+            category?: string;
         };
         /** @description One entry of an account's transaction history */
         TransactionResponse: {
@@ -259,10 +442,43 @@ export interface components {
              */
             referenceAccount?: string;
             /**
+             * @description Customer-supplied note, absent when the movement had none
+             * @example SM supermarket
+             */
+            description?: string;
+            /**
              * @description When the transaction was recorded, ISO-8601
              * @example 2026-10-21T17:05:00Z
              */
             createdAt?: string;
+            /**
+             * @description Accepted category, absent until someone categorizes the transaction
+             * @example GROCERIES
+             */
+            category?: string;
+        };
+        /** @description Request body for a transfer between two accounts */
+        TransferRequest: {
+            /**
+             * @description Account to take the money from
+             * @example 100001
+             */
+            sourceAccountNumber?: string;
+            /**
+             * @description Account to put the money into
+             * @example 100002
+             */
+            destinationAccountNumber?: string;
+            /**
+             * @description Amount as a decimal string: greater than zero, at most two decimal places
+             * @example 2000.00
+             */
+            amount?: string;
+            /**
+             * @description Optional note stored on both sides of the transfer, at most 255 characters
+             * @example Rent share
+             */
+            description?: string;
         };
         /** @description Request body for registering a login */
         RegisterRequest: {
@@ -317,6 +533,43 @@ export interface components {
             /** @example correct-horse-battery */
             password?: string;
         };
+        /** @description One chat message for the banking assistant */
+        AssistantChatRequest: {
+            /**
+             * @description The customer's question, 1 to 2000 characters
+             * @example How much did I spend on groceries this month?
+             */
+            message?: string;
+        };
+        /** @description The assistant's answer and the read-only lookups behind it */
+        AssistantChatResponse: {
+            reply?: string;
+            /** @description Tool calls executed for this answer, in order */
+            toolCalls?: components["schemas"]["AssistantToolCallResponse"][];
+            /** @description Transfers proposed but NOT executed; empty when none were proposed */
+            transferProposals?: components["schemas"]["TransferProposalResponse"][];
+        };
+        /** @description One read-only tool call the assistant executed for this answer */
+        AssistantToolCallResponse: {
+            /** @example get_balance */
+            tool?: string;
+            /** @description Arguments after unknown model-supplied fields were removed */
+            arguments?: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description A transfer the assistant suggested but did not execute */
+        TransferProposalResponse: {
+            /** @example 200001 */
+            sourceAccountNumber?: string;
+            /** @example 200002 */
+            destinationAccountNumber?: string;
+            /** @example 100.00 */
+            amount?: string;
+            /** @example PROPOSED */
+            status?: string;
+            note?: string;
+        };
         /** @description Request body for opening an account. There is no account number: the bank assigns it. */
         CreateAccountRequest: {
             /**
@@ -347,13 +600,40 @@ export interface components {
              */
             createdAt?: string;
         };
-        /** @description Request body with a single amount */
+        /** @description Request body with an amount and an optional note */
         AmountRequest: {
             /**
              * @description Amount as a decimal string: greater than zero, at most two decimal places
              * @example 2000.00
              */
             amount?: string;
+            /**
+             * @description Optional note stored with the transaction, at most 255 characters
+             * @example SM supermarket
+             */
+            description?: string;
+        };
+        /** @description Optional detail that helps the categorizer; the transaction itself is found by id */
+        CategorySuggestionRequest: {
+            /**
+             * @description Free-text note such as a merchant or purpose (at most 500 characters are used)
+             * @example Jollibee lunch with the team
+             */
+            description?: string | null;
+        };
+        /** @description A suggested category; nothing is stored until the caller accepts it */
+        CategorySuggestionResponse: {
+            /**
+             * Format: int32
+             * @description Transaction the suggestion was made for
+             * @example 42
+             */
+            transactionId?: number;
+            /**
+             * @description Suggested category code
+             * @example DINING
+             */
+            suggestedCategory?: string;
         };
         /** @description Request body for an ADMIN opening an account with a chosen number */
         CreateAccountWithNumberRequest: {
@@ -372,6 +652,96 @@ export interface components {
              * @example 5000.00
              */
             initialDeposit?: string;
+        };
+        /** @description One account whose ledger does not match its stored balance */
+        DiscrepancyResponse: {
+            /**
+             * @description Account number
+             * @example 200001
+             */
+            accountNumber?: string;
+            /**
+             * @description Account holder name
+             * @example Alice Santos
+             */
+            accountName?: string;
+            /**
+             * @description Balance the ledger implies, as a decimal string
+             * @example 1050.00
+             */
+            ledgerBalance?: string;
+            /**
+             * @description Balance stored on the account, as a decimal string
+             * @example 1045.00
+             */
+            storedBalance?: string;
+            /**
+             * @description Ledger minus stored balance: positive means the ledger holds more than the account
+             * @example 5.00
+             */
+            difference?: string;
+        };
+        /** @description Result of comparing every account's stored balance with the sum of its ledger rows */
+        ReconciliationResponse: {
+            /**
+             * @description True when every account's balance equals its ledger
+             * @example false
+             */
+            reconciled?: boolean;
+            /**
+             * @description When the check ran, ISO-8601
+             * @example 2026-10-22T10:15:30Z
+             */
+            checkedAt?: string;
+            /**
+             * Format: int32
+             * @description How many accounts were compared
+             * @example 12
+             */
+            checkedAccounts?: number;
+            /**
+             * @description Sum of the ledger over those accounts, as a decimal string
+             * @example 1050.00
+             */
+            ledgerTotal?: string;
+            /**
+             * @description Sum of the stored balances, as a decimal string
+             * @example 1045.00
+             */
+            storedTotal?: string;
+            /** @description Accounts that do not add up, by account number */
+            discrepancies?: components["schemas"]["DiscrepancyResponse"][];
+            /** @description True when more accounts mismatched than could be listed here */
+            discrepanciesTruncated?: boolean;
+        };
+        /** @description One page of anomaly flags, newest first */
+        AnomalyFlagPageResponse: {
+            /** @description Flags of this page */
+            flags?: components["schemas"]["AnomalyFlagResponse"][];
+            /**
+             * Format: int32
+             * @description Zero-based page number
+             * @example 0
+             */
+            page?: number;
+            /**
+             * Format: int32
+             * @description Requested page size
+             * @example 20
+             */
+            size?: number;
+            /**
+             * Format: int64
+             * @description Total number of flags matching the filter
+             * @example 5
+             */
+            totalElements?: number;
+            /**
+             * Format: int32
+             * @description Total number of pages
+             * @example 1
+             */
+            totalPages?: number;
         };
         /** @description One page of the accounts the caller may see, ordered by account number */
         AccountPageResponse: {
@@ -440,6 +810,149 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    reviewFlag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                flagId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewAnomalyFlagRequest"];
+            };
+        };
+        responses: {
+            /** @description Flag closed; the updated flag is returned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagResponse"];
+                };
+            };
+            /** @description No valid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagResponse"];
+                };
+            };
+            /** @description Not an ADMIN */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagResponse"];
+                };
+            };
+            /** @description No flag with that id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagResponse"];
+                };
+            };
+            /** @description The flag was already reviewed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagResponse"];
+                };
+            };
+            /** @description Status is not REVIEWED or DISMISSED */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagResponse"];
+                };
+            };
+            /** @description More than 60 requests in one minute for this user; Retry-After says how long to wait */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagResponse"];
+                };
+            };
+        };
+    };
+    setCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountNumber: string;
+                transactionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCategoryRequest"];
+            };
+        };
+        responses: {
+            /** @description Category stored; the updated transaction is returned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TransactionResponse"];
+                };
+            };
+            /** @description No valid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TransactionResponse"];
+                };
+            };
+            /** @description Account or transaction not found, or not the caller's */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TransactionResponse"];
+                };
+            };
+            /** @description Category code is not in the vocabulary */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TransactionResponse"];
+                };
+            };
+            /** @description More than 60 requests in one minute for this user; Retry-After says how long to wait */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TransactionResponse"];
+                };
+            };
+        };
+    };
     transfer: {
         parameters: {
             query?: never;
@@ -475,6 +988,15 @@ export interface operations {
             };
             /** @description No valid access token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TransactionResponse"];
+                };
+            };
+            /** @description Administrators cannot move money */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -646,6 +1168,66 @@ export interface operations {
             };
         };
     };
+    chat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantChatRequest"];
+            };
+        };
+        responses: {
+            /** @description The assistant's answer */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AssistantChatResponse"];
+                };
+            };
+            /** @description No valid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AssistantChatResponse"];
+                };
+            };
+            /** @description The message is empty or too long */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AssistantChatResponse"];
+                };
+            };
+            /** @description More than 60 requests in one minute for this user; Retry-After says how long to wait */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AssistantChatResponse"];
+                };
+            };
+            /** @description The Claude API key is missing, or the assistant did not answer */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AssistantChatResponse"];
+                };
+            };
+        };
+    };
     listAccounts: {
         parameters: {
             query?: {
@@ -808,6 +1390,15 @@ export interface operations {
                     "*/*": components["schemas"]["TransactionResponse"];
                 };
             };
+            /** @description Administrators cannot move money */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TransactionResponse"];
+                };
+            };
             /** @description Account does not exist, or is not the caller's — a CUSTOMER gets the identical answer for both */
             404: {
                 headers: {
@@ -842,6 +1433,69 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["TransactionResponse"];
+                };
+            };
+        };
+    };
+    suggestCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountNumber: string;
+                transactionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CategorySuggestionRequest"];
+            };
+        };
+        responses: {
+            /** @description A suggestion (not yet saved) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CategorySuggestionResponse"];
+                };
+            };
+            /** @description No valid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CategorySuggestionResponse"];
+                };
+            };
+            /** @description Account or transaction not found, or not the caller's */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CategorySuggestionResponse"];
+                };
+            };
+            /** @description More than 60 requests in one minute for this user; Retry-After says how long to wait */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CategorySuggestionResponse"];
+                };
+            };
+            /** @description The Claude API key is missing, or the categorizer did not answer */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["CategorySuggestionResponse"];
                 };
             };
         };
@@ -883,6 +1537,15 @@ export interface operations {
             };
             /** @description No valid access token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["TransactionResponse"];
+                };
+            };
+            /** @description Administrators cannot move money */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -993,6 +1656,125 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["AccountResponse"];
+                };
+            };
+        };
+    };
+    reconcile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Report; reconciled=false lists the mismatching accounts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ReconciliationResponse"];
+                };
+            };
+            /** @description No valid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ReconciliationResponse"];
+                };
+            };
+            /** @description Not an ADMIN */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ReconciliationResponse"];
+                };
+            };
+            /** @description More than 60 requests in one minute for this user; Retry-After says how long to wait */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ReconciliationResponse"];
+                };
+            };
+        };
+    };
+    listFlags: {
+        parameters: {
+            query?: {
+                /**
+                 * @description OPEN, REVIEWED or DISMISSED; omit for every state
+                 * @example OPEN
+                 */
+                status?: string;
+                /**
+                 * @description Zero-based page number
+                 * @example 0
+                 */
+                page?: number;
+                /**
+                 * @description Page size, 1 to 100
+                 * @example 20
+                 */
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of flags (possibly empty) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagPageResponse"];
+                };
+            };
+            /** @description No valid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagPageResponse"];
+                };
+            };
+            /** @description Not an ADMIN */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagPageResponse"];
+                };
+            };
+            /** @description Invalid status, page or size */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagPageResponse"];
+                };
+            };
+            /** @description More than 60 requests in one minute for this user; Retry-After says how long to wait */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["AnomalyFlagPageResponse"];
                 };
             };
         };

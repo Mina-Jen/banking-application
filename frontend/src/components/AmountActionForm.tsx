@@ -2,11 +2,10 @@ import { useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Alert } from './Alert'
-import { AmountField } from './AmountField'
+import { Button } from './Button'
+import { MoneyInput } from './MoneyInput'
 import { ConfirmDialog } from './ConfirmDialog'
 import { MovementSummary } from './MovementSummary'
-import { Spinner } from './Spinner'
-import { buttonPrimary } from './ui'
 import type { Transaction } from '../api/types'
 import { useIdempotencyKey } from '../api/useIdempotencyKey'
 import { errorMessage } from '../api/errors'
@@ -24,6 +23,9 @@ interface AmountActionFormProps {
   /** The API call. It receives the idempotency key this form is committed to. */
   run(amount: string, idempotencyKey: string): Promise<Transaction>
   onDone(transaction: Transaction): void
+  /** A dialog host can move result messages into a page-level toast. */
+  feedback?: 'inline' | 'external'
+  onError?(message: string): void
 }
 
 /**
@@ -49,6 +51,8 @@ export function AmountActionForm({
   busyLabel,
   run,
   onDone,
+  feedback = 'inline',
+  onError,
 }: AmountActionFormProps) {
   const schema = useMemo(
     () => (kind === 'withdraw' ? withdrawalSchema(availableBalance) : depositSchema),
@@ -102,7 +106,9 @@ export function AmountActionForm({
       onDone(transaction)
     } catch (cause) {
       // Keep `key` so pressing the button again replays rather than double-pays.
-      setError(errorMessage(cause))
+      const message = errorMessage(cause)
+      setError(message)
+      onError?.(message)
       setPending(null)
     } finally {
       setBusy(false)
@@ -112,14 +118,14 @@ export function AmountActionForm({
   return (
     <>
       <form onSubmit={handleSubmit(onValid)} noValidate className="space-y-4">
-        {error ? <Alert tone="error">{error}</Alert> : null}
-        {done ? <Alert tone="success">{done}</Alert> : null}
+        {feedback === 'inline' && error ? <Alert tone="error">{error}</Alert> : null}
+        {feedback === 'inline' && done ? <Alert tone="success">{done}</Alert> : null}
 
         <Controller
           control={control}
           name="amount"
           render={({ field, fieldState }) => (
-            <AmountField
+            <MoneyInput
               label={fieldLabel}
               value={field.value}
               disabled={busy}
@@ -137,10 +143,9 @@ export function AmountActionForm({
           )}
         />
 
-        <button type="submit" className={buttonPrimary} disabled={busy}>
-          {busy ? <Spinner /> : null}
+        <Button type="submit" loading={busy}>
           {busy ? busyLabel : submitLabel}
-        </button>
+        </Button>
       </form>
 
       <ConfirmDialog

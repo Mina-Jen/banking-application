@@ -12,6 +12,10 @@
   ],
   "tags": [
     {
+      "name": "Transaction categories",
+      "description": "AI-assisted filing of transactions under spending categories"
+    },
+    {
       "name": "Auth",
       "description": "Registration, login, and token refresh"
     },
@@ -20,11 +24,217 @@
       "description": "Moving money between two accounts in one transaction"
     },
     {
+      "name": "Reconciliation",
+      "description": "ADMIN-only money-integrity check: the ledger against the stored balances"
+    },
+    {
+      "name": "Anomaly flags",
+      "description": "ADMIN review of money movements the anomaly rules flagged"
+    },
+    {
       "name": "Accounts",
       "description": "Account management and money movement"
+    },
+    {
+      "name": "Assistant",
+      "description": "Claude-powered chat over the caller's own accounts"
     }
   ],
   "paths": {
+    "/api/anomaly-flags/{flagId}": {
+      "put": {
+        "tags": [
+          "Anomaly flags"
+        ],
+        "summary": "Close an anomaly flag",
+        "description": "ADMIN only. Records REVIEWED or DISMISSED, who decided and when. A decision is one-way: an already closed flag is a 409.",
+        "operationId": "reviewFlag",
+        "parameters": [
+          {
+            "name": "flagId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewAnomalyFlagRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Flag closed; the updated flag is returned",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an ADMIN",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No flag with that id",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The flag was already reviewed",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Status is not REVIEWED or DISMISSED",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{accountNumber}/transactions/{transactionId}/category": {
+      "put": {
+        "tags": [
+          "Transaction categories"
+        ],
+        "summary": "Store a category for a transaction",
+        "description": "Accepts a suggested category or stores one chosen by hand. The code must be one of the documented vocabulary values; anything else is a 422.",
+        "operationId": "setCategory",
+        "parameters": [
+          {
+            "name": "accountNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "transactionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetCategoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Category stored; the updated transaction is returned",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account or transaction not found, or not the caller's",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Category code is not in the vocabulary",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/transfers": {
       "post": {
         "tags": [
@@ -76,6 +286,16 @@
           },
           "401": {
             "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Administrators cannot move money",
             "content": {
               "*/*": {
                 "schema": {
@@ -276,6 +496,78 @@
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/chat": {
+      "post": {
+        "tags": [
+          "Assistant"
+        ],
+        "summary": "Ask the banking assistant a question",
+        "description": "Runs a tool-calling conversation with Claude. The tools read balances, search transactions and summarize spending, always for the authenticated caller. A requested transfer comes back as a proposal only; confirm it with POST /api/transfers. Requires ANTHROPIC_API_KEY.",
+        "operationId": "chat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The assistant's answer",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantChatResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The message is empty or too long",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantChatResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantChatResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Claude API key is missing, or the assistant did not answer",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantChatResponse"
                 }
               }
             }
@@ -498,6 +790,16 @@
               }
             }
           },
+          "403": {
+            "description": "Administrators cannot move money",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Account does not exist, or is not the caller's — a CUSTOMER gets the identical answer for both",
             "content": {
@@ -534,6 +836,96 @@
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{accountNumber}/transactions/{transactionId}/category-suggestion": {
+      "post": {
+        "tags": [
+          "Transaction categories"
+        ],
+        "summary": "Suggest a category for a transaction",
+        "description": "Sends the transaction type, amount and an optional description to Claude and returns one code from the closed category vocabulary. The suggestion is NOT stored; accept it with PUT .../category. The account must belong to the caller.",
+        "operationId": "suggestCategory",
+        "parameters": [
+          {
+            "name": "accountNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "transactionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategorySuggestionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A suggestion (not yet saved)",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategorySuggestionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategorySuggestionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account or transaction not found, or not the caller's",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategorySuggestionResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategorySuggestionResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Claude API key is missing, or the categorizer did not answer",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategorySuggestionResponse"
                 }
               }
             }
@@ -600,6 +992,16 @@
           },
           "401": {
             "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Administrators cannot move money",
             "content": {
               "*/*": {
                 "schema": {
@@ -726,6 +1128,156 @@
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reconciliation": {
+      "get": {
+        "tags": [
+          "Reconciliation"
+        ],
+        "summary": "Check that every account balance equals the sum of its ledger rows",
+        "description": "ADMIN only. Read-only: it reports the accounts that do not add up and changes no balance, because a discrepancy has to be explained before it is corrected.",
+        "operationId": "reconcile",
+        "responses": {
+          "200": {
+            "description": "Report; reconciled=false lists the mismatching accounts",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an ADMIN",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/anomaly-flags": {
+      "get": {
+        "tags": [
+          "Anomaly flags"
+        ],
+        "summary": "List anomaly flags, newest first",
+        "description": "ADMIN only. Without a status filter every flag is listed; status=OPEN is the review queue. Flags never block or reverse a transaction.",
+        "operationId": "listFlags",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "OPEN, REVIEWED or DISMISSED; omit for every state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "OPEN"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Zero-based page number",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            },
+            "example": 0
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "Page size, 1 to 100",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            },
+            "example": 20
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of flags (possibly empty)",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagPageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagPageResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an ADMIN",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagPageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid status, page or size",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagPageResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 60 requests in one minute for this user; Retry-After says how long to wait",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomalyFlagPageResponse"
                 }
               }
             }
@@ -902,24 +1454,93 @@
   },
   "components": {
     "schemas": {
-      "TransferRequest": {
+      "ReviewAnomalyFlagRequest": {
         "type": "object",
-        "description": "Request body for a transfer between two accounts",
+        "description": "An admin's decision about an anomaly flag",
         "properties": {
-          "sourceAccountNumber": {
+          "status": {
             "type": "string",
-            "description": "Account to take the money from",
-            "example": "100001"
+            "description": "REVIEWED (handled) or DISMISSED (nothing wrong)",
+            "example": "REVIEWED"
+          }
+        }
+      },
+      "AnomalyFlagResponse": {
+        "type": "object",
+        "description": "A rule finding about one transaction, waiting for or closed by an ADMIN review",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Flag id",
+            "example": 12
           },
-          "destinationAccountNumber": {
+          "transactionId": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The flagged transaction",
+            "example": 42
+          },
+          "transactionReference": {
             "type": "string",
-            "description": "Account to put the money into",
-            "example": "100002"
+            "description": "Reference of the flagged transaction",
+            "example": "TXN-lz3k9x00a1b2"
+          },
+          "accountNumber": {
+            "type": "string",
+            "description": "Account the transaction belongs to",
+            "example": "200001"
+          },
+          "transactionType": {
+            "type": "string",
+            "description": "WITHDRAW or TRANSFER_OUT",
+            "example": "WITHDRAW"
           },
           "amount": {
             "type": "string",
-            "description": "Amount as a decimal string: greater than zero, at most two decimal places",
-            "example": "2000.00"
+            "description": "Flagged amount as a decimal string",
+            "example": "5000.00"
+          },
+          "rule": {
+            "type": "string",
+            "description": "UNUSUAL_AMOUNT or VELOCITY",
+            "example": "UNUSUAL_AMOUNT"
+          },
+          "status": {
+            "type": "string",
+            "description": "OPEN, REVIEWED or DISMISSED",
+            "example": "OPEN"
+          },
+          "details": {
+            "type": "string",
+            "description": "What the rule saw, in words",
+            "example": "5000.00 is at least 3x the 100.00 average of the last 3 outbound transactions (flag floor 1000.00)."
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "When the flag was raised, ISO-8601",
+            "example": "2026-10-22T10:15:30Z"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "description": "When an admin closed the flag, absent while OPEN",
+            "example": "2026-10-22T11:00:00Z"
+          },
+          "reviewedBy": {
+            "type": "string",
+            "description": "Admin who closed the flag, absent while OPEN",
+            "example": "admin"
+          }
+        }
+      },
+      "SetCategoryRequest": {
+        "type": "object",
+        "description": "The category the account owner accepted for a transaction",
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "One code from the category vocabulary",
+            "example": "GROCERIES"
           }
         }
       },
@@ -961,10 +1582,46 @@
             "description": "Other account of a transfer, absent for deposit and withdraw",
             "example": "100002"
           },
+          "description": {
+            "type": "string",
+            "description": "Customer-supplied note, absent when the movement had none",
+            "example": "SM supermarket"
+          },
           "createdAt": {
             "type": "string",
             "description": "When the transaction was recorded, ISO-8601",
             "example": "2026-10-21T17:05:00Z"
+          },
+          "category": {
+            "type": "string",
+            "description": "Accepted category, absent until someone categorizes the transaction",
+            "example": "GROCERIES"
+          }
+        }
+      },
+      "TransferRequest": {
+        "type": "object",
+        "description": "Request body for a transfer between two accounts",
+        "properties": {
+          "sourceAccountNumber": {
+            "type": "string",
+            "description": "Account to take the money from",
+            "example": "100001"
+          },
+          "destinationAccountNumber": {
+            "type": "string",
+            "description": "Account to put the money into",
+            "example": "100002"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Amount as a decimal string: greater than zero, at most two decimal places",
+            "example": "2000.00"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional note stored on both sides of the transfer, at most 255 characters",
+            "example": "Rent share"
           }
         }
       },
@@ -1048,6 +1705,80 @@
           }
         }
       },
+      "AssistantChatRequest": {
+        "type": "object",
+        "description": "One chat message for the banking assistant",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "The customer's question, 1 to 2000 characters",
+            "example": "How much did I spend on groceries this month?"
+          }
+        }
+      },
+      "AssistantChatResponse": {
+        "type": "object",
+        "description": "The assistant's answer and the read-only lookups behind it",
+        "properties": {
+          "reply": {
+            "type": "string"
+          },
+          "toolCalls": {
+            "type": "array",
+            "description": "Tool calls executed for this answer, in order",
+            "items": {
+              "$ref": "#/components/schemas/AssistantToolCallResponse"
+            }
+          },
+          "transferProposals": {
+            "type": "array",
+            "description": "Transfers proposed but NOT executed; empty when none were proposed",
+            "items": {
+              "$ref": "#/components/schemas/TransferProposalResponse"
+            }
+          }
+        }
+      },
+      "AssistantToolCallResponse": {
+        "type": "object",
+        "description": "One read-only tool call the assistant executed for this answer",
+        "properties": {
+          "tool": {
+            "type": "string",
+            "example": "get_balance"
+          },
+          "arguments": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Arguments after unknown model-supplied fields were removed"
+          }
+        }
+      },
+      "TransferProposalResponse": {
+        "type": "object",
+        "description": "A transfer the assistant suggested but did not execute",
+        "properties": {
+          "sourceAccountNumber": {
+            "type": "string",
+            "example": "200001"
+          },
+          "destinationAccountNumber": {
+            "type": "string",
+            "example": "200002"
+          },
+          "amount": {
+            "type": "string",
+            "example": "100.00"
+          },
+          "status": {
+            "type": "string",
+            "example": "PROPOSED"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
       "CreateAccountRequest": {
         "type": "object",
         "description": "Request body for opening an account. There is no account number: the bank assigns it.",
@@ -1090,12 +1821,48 @@
       },
       "AmountRequest": {
         "type": "object",
-        "description": "Request body with a single amount",
+        "description": "Request body with an amount and an optional note",
         "properties": {
           "amount": {
             "type": "string",
             "description": "Amount as a decimal string: greater than zero, at most two decimal places",
             "example": "2000.00"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional note stored with the transaction, at most 255 characters",
+            "example": "SM supermarket"
+          }
+        }
+      },
+      "CategorySuggestionRequest": {
+        "type": "object",
+        "description": "Optional detail that helps the categorizer; the transaction itself is found by id",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-text note such as a merchant or purpose (at most 500 characters are used)",
+            "example": "Jollibee lunch with the team"
+          }
+        }
+      },
+      "CategorySuggestionResponse": {
+        "type": "object",
+        "description": "A suggested category; nothing is stored until the caller accepts it",
+        "properties": {
+          "transactionId": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Transaction the suggestion was made for",
+            "example": 42
+          },
+          "suggestedCategory": {
+            "type": "string",
+            "description": "Suggested category code",
+            "example": "DINING"
           }
         }
       },
@@ -1117,6 +1884,117 @@
             "type": "string",
             "description": "Opening deposit as a decimal string; zero creates the account without a transaction",
             "example": "5000.00"
+          }
+        }
+      },
+      "DiscrepancyResponse": {
+        "type": "object",
+        "description": "One account whose ledger does not match its stored balance",
+        "properties": {
+          "accountNumber": {
+            "type": "string",
+            "description": "Account number",
+            "example": "200001"
+          },
+          "accountName": {
+            "type": "string",
+            "description": "Account holder name",
+            "example": "Alice Santos"
+          },
+          "ledgerBalance": {
+            "type": "string",
+            "description": "Balance the ledger implies, as a decimal string",
+            "example": "1050.00"
+          },
+          "storedBalance": {
+            "type": "string",
+            "description": "Balance stored on the account, as a decimal string",
+            "example": "1045.00"
+          },
+          "difference": {
+            "type": "string",
+            "description": "Ledger minus stored balance: positive means the ledger holds more than the account",
+            "example": "5.00"
+          }
+        }
+      },
+      "ReconciliationResponse": {
+        "type": "object",
+        "description": "Result of comparing every account's stored balance with the sum of its ledger rows",
+        "properties": {
+          "reconciled": {
+            "type": "boolean",
+            "description": "True when every account's balance equals its ledger",
+            "example": false
+          },
+          "checkedAt": {
+            "type": "string",
+            "description": "When the check ran, ISO-8601",
+            "example": "2026-10-22T10:15:30Z"
+          },
+          "checkedAccounts": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many accounts were compared",
+            "example": 12
+          },
+          "ledgerTotal": {
+            "type": "string",
+            "description": "Sum of the ledger over those accounts, as a decimal string",
+            "example": "1050.00"
+          },
+          "storedTotal": {
+            "type": "string",
+            "description": "Sum of the stored balances, as a decimal string",
+            "example": "1045.00"
+          },
+          "discrepancies": {
+            "type": "array",
+            "description": "Accounts that do not add up, by account number",
+            "items": {
+              "$ref": "#/components/schemas/DiscrepancyResponse"
+            }
+          },
+          "discrepanciesTruncated": {
+            "type": "boolean",
+            "description": "True when more accounts mismatched than could be listed here"
+          }
+        }
+      },
+      "AnomalyFlagPageResponse": {
+        "type": "object",
+        "description": "One page of anomaly flags, newest first",
+        "properties": {
+          "flags": {
+            "type": "array",
+            "description": "Flags of this page",
+            "items": {
+              "$ref": "#/components/schemas/AnomalyFlagResponse"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Zero-based page number",
+            "example": 0
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Requested page size",
+            "example": 20
+          },
+          "totalElements": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total number of flags matching the filter",
+            "example": 5
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of pages",
+            "example": 1
           }
         }
       },
